@@ -1,0 +1,414 @@
+body {
+  font-family: Arial, sans-serif;
+  margin: 0;
+  padding: 0;
+  background-color: #f4f4f4;
+}
+
+.seller-info {
+  position: absolute;
+  top: 80px;
+  right: 20px;
+  background-color: #42dcff;
+  padding: 10px;
+  border-radius: 5px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.seller-info p {
+  margin: 0;
+  font-weight: bold;
+  color: #333;
+}
+
+.customer-info {
+  position: absolute;
+  top: 60px;
+  right: 20px;
+  background-color: #42dcff;
+  padding: 10px;
+  border-radius: 5px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.customer-info p {
+  margin: 0;
+  font-weight: bold;
+  color: #333;
+}
+footer {
+  background-color: #333;
+  color: #fff;
+  padding: 1rem;
+  text-align: center;
+}
+
+h1 {
+  margin-top: 50px;
+  margin-bottom: 50px;
+  text-align: center;
+}
+
+h2{
+  margin-top: 50px;
+  margin-bottom: 50px;
+  text-align: center;
+}
+
+.message {
+  padding: 10px;
+  margin: 10px 0;
+  border-radius: 5px;
+}
+
+.message.error {
+  color: #d9534f; 
+  background-color: #f2dede; 
+  border: 1px solid #d9534f; 
+}
+
+form {
+  background-color: #fff;
+  border: 1px solid #ddd;
+  border-radius: 5px;
+  padding: 2rem;
+  max-width: 600px;
+  margin: 2rem auto;
+}
+
+label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: bold;
+}
+
+input[type="text"], textarea, input[type="number"],input[type="time"],input[type="file"],input[type="email"], input[type="password"] {
+  width: 100%;
+  padding: 0.5rem;
+  margin-bottom: 1rem;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+}
+
+button {
+  background-color: #333;
+  color: #fff;
+  padding: 0.75rem 1.5rem;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 1rem; 
+}
+
+button:hover {
+  background-color: #555;
+}
+
+p {
+  margin: 0;
+}
+
+*,
+*::after,
+*::before {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+header {
+    background-color: #333;
+    color: #fff;
+    padding: 1rem;
+    text-align: center;
+}
+
+header h1 {
+    margin-bottom: 1rem;
+}
+
+nav ul {
+    list-style: none;
+    padding: 0;
+}
+
+nav ul li {
+    display: inline;
+    margin: 0 1rem;
+}
+
+nav ul li a {
+    color: #fff;
+    text-decoration: none;
+    font-weight: bold;
+}
+
+nav ul li a:hover {
+    text-decoration: underline;
+}
+
+main {
+    padding: 2rem;
+}
+
+.meal-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+}
+
+.meal-card {
+  display: flex;
+  align-items: flex-start;
+  margin-left: 17px;
+  background: #f9f9f9;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  padding: 1rem;
+  width: calc(33% - 2rem); 
+  height: 350px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  box-sizing: border-box;
+  overflow: hidden; 
+}
+
+.meal-card h2 {
+  margin: 0;
+  font-size: 1.5rem;
+}
+  
+.meal-card p {
+  margin: 0.5rem 0;
+}
+
+.img-box {
+  margin-top: 50px;
+  margin-right: 20px;
+  flex-shrink: 0;
+  margin-left: 1rem;
+  border: solid 2px black;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+}
+
+.meal-img {
+  width: 200px; 
+  height: 200px; 
+  object-fit: cover;
+  border-radius: 8px; 
+}
+
+.meal-content {
+  flex: 1;
+}
+
+.meal-actions {
+  margin-top: 50px !important;
+  display: flex;
+  gap: 20px;
+}
+
+.meal-actions form {
+  margin: 0;
+}
+
+.meal-actions button {
+  padding: 4px 6px;
+  border: none;
+  background-color: #007bff;
+  color: white;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.meal-actions button:hover {
+  background-color: #0056b3;
+}
+
+.sellers-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+}
+
+.seller-box {
+  margin-left: 22px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  padding: 20px;
+  width: calc(33% - 200px); 
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.cart-or-buy {
+  display: flex;
+  gap: 30px; 
+  border-radius: 5px !important; 
+  padding: 2rem !important; 
+  max-width: 600px !important; 
+  margin: 2rem auto !important; 
+}
+
+.cart-or-buy button {
+  padding: 10px 15px;
+  cursor: pointer;
+}
+
+/* Container for all cart items */
+.cart-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  padding: 20px;
+}
+
+/* Individual cart item box */
+.cart-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  width: 80%;
+  border: 1px solid #ccc;
+  border-radius: 10px;
+  margin-bottom: 20px;
+  padding: 15px;
+  background-color: #f9f9f9;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+/* Meal details in the cart */
+.cart-content {
+  flex: 2;
+  padding-right: 20px;
+}
+
+.cart-meal-name {
+  font-size: 1.5em;
+  margin-bottom: 10px;
+}
+
+.cart-content p {
+  margin: 5px 0;
+}
+
+.remove-btn {
+  background-color: #ff5e57;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.remove-btn:hover {
+  background-color: #ff2e20;
+}
+
+/* Image box for each meal */
+.cart-img-box {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.cart-meal-img {
+  width: 150px;
+  height: 150px;
+  border-radius: 10px;
+  object-fit: cover;
+}
+
+/* Checkout button */
+.checkout-container {
+  display: flex;
+  justify-content: center;
+  width: 80%;
+  margin-top: 20px;
+}
+
+.checkout-btn {
+  background-color: #28a745;
+  color: white;
+  border: none;
+  padding: 15px 30px;
+  border-radius: 5px;
+  font-size: 1.2em;
+  cursor: pointer;
+}
+
+.checkout-btn:hover {
+  background-color: #218838;
+}
+
+.seller-box h2 {
+  margin: 0 0 10px;
+}
+
+.seller-box p {
+  margin: 5px 0;
+}
+
+/* Modal styles */
+.modal {
+  display: none;
+  position: fixed;
+  z-index: 1;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+  background-color: rgb(0,0,0);
+  background-color: rgba(0,0,0,0.4);
+}
+
+.modal-content {
+  background-color: #fefefe;
+  margin: 15% auto;
+  padding: 20px;
+  border: 1px solid #888;
+  width: 30%;
+}
+
+.close {
+  color: #aaa;
+  float: right;
+  font-size: 28px;
+  font-weight: bold;
+}
+
+.close:hover,
+.close:focus {
+  color: black;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+/* Rating stars */
+.rating-stars {
+  display: flex;
+  direction: row;
+}
+
+.star {
+  font-size: 2em;
+  color: #ccc;
+  cursor: pointer;
+}
+
+.star.selected {
+  color: gold;
+}
+
+.cart-icon {
+  position: absolute;
+  top: 100px;
+  right: 20px;
+  padding: 10px;
+  border-radius: 5px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}

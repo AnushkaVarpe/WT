@@ -1,0 +1,79 @@
+<%- include('../partials/customerHeader', { customerName: customerName }) %>
+
+<body>
+  <h1>Order Review for <%= meal.name %></h1>
+
+  <div class="meal-card">
+    <div class="meal-content">
+      <h2 class="meal-name"><%= meal.name %></h2>
+      <p><strong>Price:</strong> ₹<span id="meal-price"><%= meal.price %></span></p>
+      <p><strong>Contents:</strong> <%= meal.contents %></p>
+      <p><strong>Delivery Time:</strong> <%= meal.delivery_time %></p>
+      <p><strong>Seller:</strong> <%= meal.seller_name %></p>
+    </div>
+
+    <div class="img-box">
+      <% if (meal.image_url) { %>
+        <img class="meal-img" src="<%= meal.image_url %>" alt="<%= meal.name %>">
+      <% } %>
+    </div>
+  </div>
+
+  <button id="pay-button" style="position: static; margin-top:20px; margin-bottom:20px; margin-left: 47%;">Pay</button>
+
+  <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+  <script>
+    document.getElementById('pay-button').onclick = function (e) {
+      e.preventDefault(); // Prevent default button behavior
+      
+      // Get the meal price from the DOM
+      const price = document.getElementById('meal-price').innerText.replace('₹', '').trim();
+      const amountInPaise = parseFloat(price) * 100; // Convert amount to paise
+
+      fetch('/create-order', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          amount: amountInPaise
+        })
+      })
+      .then(response => response.json())
+      .then(data => {
+        var options = {
+          "key": "<%= process.env.RAZORPAY_KEY_ID %>", // Replace with your Razorpay Key ID
+          "amount": data.amount, // Amount in paise
+          "currency": "INR",
+          "name": "Your Company",
+          "description": "Meal Order",
+          "order_id": data.id, // Order ID returned from server
+          "handler": function (response) {
+            // Handle payment success
+            fetch('/payment-confirmation', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                paymentId: response.razorpay_payment_id,
+                orderId: response.razorpay_order_id
+              })
+            })
+            .then(() => window.location.href = '/payment-confirmation');
+          },
+          "prefill": {
+            "name": "<%= customerName %>",
+            "email": "customer@example.com",
+            "contact": "9999999999"
+          }
+        };
+        var rzp1 = new Razorpay(options);
+        rzp1.open();
+      })
+      .catch(error => console.error('Error:', error));
+    }
+  </script>
+</body>
+
+<%- include('../partials/footer') %>

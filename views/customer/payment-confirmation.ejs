@@ -1,0 +1,10 @@
+<%- include('../partials/customerHeader', { customerName: customerName }) %>
+
+<body>
+  <h1>Order Confirmed</h1>
+  <h1>Payment Confirmation</h1>
+  <p style="text-align: center; font-size: larger;">Thank you for your order, <%= customerName %>! Your meals will be delivered shortly.</p>
+  <a style="margin-left:47%; font-size: larger;" href="/customer/home">Back to Meals</a>
+</body>
+
+<%- include('../partials/footer') %>

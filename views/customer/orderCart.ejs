@@ -1,0 +1,88 @@
+<%- include('../partials/customerHeader', { customerName: customerName }) %>
+
+<body>
+  <h1>Confirm Your Order</h1>
+  <div class="meal-container">
+    <% if (cartItems.length > 0) { %>
+      <% cartItems.forEach(item => { %>
+        <div class="meal-card">
+          <div class="meal-content">
+            <h2 class="meal-name"><%= item.name %></h2>
+            <p><strong>Price:</strong> ₹<span class="meal-price"><%= item.price %></span></p>
+            <p><strong>Contents:</strong> <%= item.contents %></p>
+            <p><strong>Delivery Time:</strong> <%= item.delivery_time %></p>
+            <p><strong>Seller:</strong> <%= item.seller_name %></p>
+          </div>
+          <div class="img-box">
+            <% if (item.image_url) { %>
+              <img class="meal-img" src="<%= item.image_url %>" alt="<%= item.name %>">
+            <% } %>
+          </div>
+        </div>
+      <% }) %>
+    </div>  
+    <button id="pay-button" style="position: static; margin-top:20px; margin-bottom:20px; margin-left: 47%;">Pay</button>
+    <% } else { %>
+      <h2>Your cart is empty.</h2>
+    <% } %>
+  
+  <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+  <script>
+    document.getElementById('pay-button').onclick = function (e) {
+      e.preventDefault(); 
+
+      fetch('/create-order', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          amount: calculateTotalAmount() * 100  
+        })
+      })
+      .then(response => response.json())
+      .then(data => {
+        var options = {
+          "key": "<%= process.env.RAZORPAY_KEY_ID %>", 
+          "amount": data.amount,  
+          "currency": "INR",
+          "name": "Your Company",
+          "description": "Meal Order",
+          "order_id": data.id, 
+          "handler": function (response) {
+            fetch('/payment-confirmation', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                paymentId: response.razorpay_payment_id,
+                orderId: response.razorpay_order_id
+              })
+            })
+            .then(() => window.location.href = '/payment-confirmation');
+          },
+          "prefill": {
+            "name": "<%= customerName %>",
+            "email": "customer@example.com",
+            "contact": "9999999999"
+          }
+        };
+        var rzp1 = new Razorpay(options);
+        rzp1.open();
+      })
+      .catch(error => console.error('Error:', error));
+    }
+
+    function calculateTotalAmount() {
+      let total = 0;
+      document.querySelectorAll('.meal-price').forEach(function (priceElement) {
+        const price = parseFloat(priceElement.innerText.replace('₹', '').trim());
+        total += price;
+      });
+      return total;
+    }
+  </script>
+</body>
+
+<%- include('../partials/footer') %>

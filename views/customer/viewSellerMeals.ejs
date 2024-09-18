@@ -1,0 +1,55 @@
+<%- include('../partials/customerHeader', { customerName: customerName }) %>
+
+<body>
+  <h1>All Meals from <%= seller.name %></h1>
+  <div class="meal-container">
+    <% meals.forEach(meal => { %>
+      <div class="meal-card">
+        <div class="meal-content">
+          <h2 class="meal-name"><%= meal.name %></h2>
+          <p><strong>Price:</strong> ₹<%= meal.price %></p>
+          <p><strong>Contents:</strong> <%= meal.contents %></p>
+          <p><strong>Delivery Time:</strong> <%= meal.delivery_time %></p>
+          <p><strong>Seller:</strong> <%= meal.seller_name %></p>
+          <div class="cart-or-buy">
+            <button type="button" class="add-to-cart-btn" data-mealid="<%= meal.id %>" data-mealname="<%= meal.name %>" data-mealprice="<%= meal.price %>" data-mealcontents="<%= meal.contents %>" data-mealdelivery="<%= meal.delivery_time %>" data-sellername="<%= meal.seller_name %>" data-mealimage="<%= meal.image_url %>">Add to Cart</button>
+            <a href="/order/<%= meal.id %>" class="btn btn-primary">Order Now</a>
+          </div> 
+        </div>
+        <div class="img-box">
+          <% if (meal.image_url) { %>
+            <img class="meal-img" src="<%= meal.image_url %>" alt="<%= meal.name %>">
+          <% } %>
+        </div>
+      </div>
+    <% }) %>
+  </div>
+</body> 
+  <%- include('../partials/footer') %>
+  <script>
+    document.querySelectorAll('.add-to-cart-btn').forEach(button => {
+      button.addEventListener('click', function () {
+        const mealId = this.getAttribute('data-mealid');
+        const mealName = this.getAttribute('data-mealname');
+        const mealPrice = this.getAttribute('data-mealprice');
+        const mealContents= this.getAttribute('data-mealcontents');
+        const mealSeller = this.getAttribute('data-sellername');
+        const mealDelivery= this.getAttribute('data-mealdelivery');
+        const mealImage=this.getAttribute('data-mealimage');
+        fetch('/cart/add', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ mealId: mealId, mealName: mealName, mealPrice:mealPrice, mealContents:mealContents, mealImage:mealImage, mealDelivery:mealDelivery, mealSeller:mealSeller}),
+        })
+        .then(response => response.json())
+        
+        .then(data => {
+          document.querySelector('.cart-count').textContent = data.cartCount;
+        })
+        .catch(error => console.error('Error:', error));
+      });
+    });
+  </script>
+   

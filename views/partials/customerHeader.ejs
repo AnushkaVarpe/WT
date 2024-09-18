@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Meals</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+    <header>
+        <h1>View Meals</h1>
+        <nav>
+            <ul>
+                <li><a href="/customer/home">View Sellers</a></li>
+            </ul>
+        </nav>
+        <% if (customerName) { %>
+            <div class="customer-info">
+                <p>Welcome, <%= customerName %>!</p>
+            </div>
+        <% } %>
+        <div class="cart-icon">
+            <a href="/cart">
+                <img style="width: 30px; height: auto;" src="/icons/605508_bag_buy_cart_item_sale_icon.png" class="shopping-cart"/>
+                <span style=" position: relative; top: -20px; background-color: red; color: white; font-size: 12px; padding: 2px 4px;border-radius: 50%;text-align: center;" class="cart-count">
+                    <%= cartCount %>
+                </span>
+            </a>
+        </div>
+    </header>
+</body>

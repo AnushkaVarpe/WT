@@ -1,0 +1,499 @@
+import express from 'express';
+import bodyParser from 'body-parser';
+import session from 'express-session';
+import bcrypt from 'bcrypt';
+import db from './config/db.js';
+import dotenv from 'dotenv';
+import multer from 'multer';
+import path from 'path';
+import Razorpay from 'razorpay';
+dotenv.config();
+                 
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, './public/uploads');
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
+  }
+});
+
+const upload = multer({ 
+  storage: storage,
+  limits: { fileSize: 1024 * 1024 * 5 } 
+});
+
+const app = express();
+const port = 3000;
+const saltRounds = 10;
+
+app.use(bodyParser.urlencoded({ extended: true }));
+app.set('view engine', 'ejs');
+app.set('views', './views');
+app.use(express.static('public'));
+app.use(express.json());
+
+app.use(session({
+  secret: process.env.SESSION_SECRET || 'your_secret_key',
+  resave: false,
+  saveUninitialized: true,
+}));
+
+const razorpay = new Razorpay({
+  key_id: process.env.RAZORPAY_KEY_ID, 
+  key_secret: process.env.RAZORPAY_KEY_SECRET
+});
+
+app.use((req, res, next) => {
+  if (req.session.cart) {
+    res.locals.cartCount = req.session.cart.length; // Calculate cart count
+  } else {
+    res.locals.cartCount = 0; // If no cart, cart count is 0
+  }
+  next(); // Proceed to the next middleware or route handler
+});
+
+app.get('/', (req, res) => {
+  res.redirect('/seller/login');
+});
+
+app.get('/customer/login', (req, res) => {
+  res.render('customer/customerLogin', { message: '' });
+});
+
+app.get('/register/customer', (req, res) => {
+  res.render('customer/customerRegister', { message: '' });
+});
+
+app.get('/seller/login', (req, res) => {
+  res.render('seller/sellerLogin', { message: '' });
+});
+
+app.get('/register/seller', (req, res) => {
+  res.render('seller/sellerRegister', { message: '' });
+});
+
+const isAuthenticatedSeller = (req, res, next) => {
+  if (req.session.sellerId) {
+    return next(); 
+  } else {
+    return res.redirect('/seller/login'); 
+  }
+};
+
+const isAuthenticatedCustomer = (req, res, next) => {
+  if (req.session.customerId) {
+    return next(); 
+  } else {
+    return res.redirect('/customer/login'); 
+  }
+};
+
+app.post('/register/customer', async (req, res) => {
+  const { name, address, email, password, confirmpassword } = req.body;
+
+  if (password !== confirmpassword) {
+    return res.render('customer/customerRegister', { message: 'Passwords do not match.' });
+  }
+
+  try {
+    const hashedPassword = await bcrypt.hash(password, saltRounds);
+
+    db.query('SELECT * FROM customers WHERE email = $1', [email], (err, result) => {
+      if (err) {
+        console.error('Error during registration:', err);
+        return res.render('customer/customerRegister', { message: 'Error during registration. Please try again.' });
+      } else if (result.rows.length > 0) {
+        return res.render('customer/customerRegister', { message: 'User already exists. Please try a different one.' });
+      } else {
+        db.query('INSERT INTO customers (name, address, email, password) VALUES ($1, $2, $3, $4)', [name, address, email, hashedPassword], (err) => {
+          if (err) {
+            console.error('Error registering:', err);
+            return res.render('customer/customerRegister', { message: 'Error during registration. Please try again.' });
+          } else {
+            res.redirect('/customer/login');
+          }
+        });
+      }
+    });
+  } catch (error) {
+    console.error('Error hashing password:', error);
+    res.render('customer/customerRegister', { message: 'Error during registration. Please try again.' });
+  }
+});
+
+app.post('/customer/login', async (req, res) => {
+  const { email, password } = req.body;
+
+  db.query('SELECT * FROM customers WHERE email = $1', [email], async (err, result) => {
+    if (err) {
+      console.error('Error during customer login:', err);
+      return res.render('customer/customerLogin', { message: 'Error during login. Please try again.' });
+    }
+    if (result.rows.length > 0) {
+      const user = result.rows[0];
+      const match = await bcrypt.compare(password, user.password);
+      if (match) {
+        req.session.customerId = user.id;
+        req.session.customerName = user.name;
+        res.redirect('/customer/home');
+      } else {
+        res.render('customer/customerLogin', { message: 'Invalid credentials. Please try again.' });
+      }
+    } else {
+      res.render('customer/customerLogin', { message: 'User does not exist. Please register.' });
+    }
+  });
+});
+
+app.post('/register/seller', async (req, res) => {
+  const { name, address, email, password, confirmpassword } = req.body;
+
+  if (password !== confirmpassword) {
+    return res.render('seller/sellerRegister', { message: 'Passwords do not match.' });
+  }
+
+  try {
+    const hashedPassword = await bcrypt.hash(password, saltRounds);
+
+    db.query('SELECT * FROM sellers WHERE email = $1', [email], (err, result) => {
+      if (err) {
+        console.error('Error during registration:', err);
+        return res.render('seller/sellerRegister', { message: 'Error during registration. Please try again.' });
+      } else if (result.rows.length > 0) {
+        return res.render('seller/sellerRegister', { message: 'User already exists. Please try a different one.' });
+      } else {
+        db.query('INSERT INTO sellers (name, address, email, password) VALUES ($1, $2, $3, $4)', [name, address, email, hashedPassword], (err) => {
+          if (err) {
+            console.error('Error registering:', err);
+            return res.render('seller/sellerRegister', { message: 'Error during registration. Please try again.' });
+          } else {
+            res.redirect('/seller/login');
+          }
+        });
+      }
+    });
+  } catch (error) {
+    console.error('Error hashing password:', error);
+    res.render('seller/sellerRegister', { message: 'Error during registration. Please try again.' });
+  }
+});
+
+app.post('/seller/login', async (req, res) => {
+  const { email, password } = req.body;
+
+  db.query('SELECT * FROM sellers WHERE email = $1', [email], async (err, result) => {
+    if (err) {
+      console.error('Error during seller login:', err);
+      return res.render('seller/sellerLogin', { message: 'Error during login. Please try again.' });
+    }
+    if (result.rows.length > 0) {
+      const user = result.rows[0];
+      const match = await bcrypt.compare(password, user.password);
+      if (match) {
+        req.session.sellerId = user.id;
+        req.session.sellerName = user.name;
+        res.redirect('/seller/home');
+      } else {
+        res.render('seller/sellerLogin', { message: 'Invalid credentials. Please try again.' });
+      }
+    } else {
+      res.render('seller/sellerLogin', { message: 'User does not exist. Please register.' });
+    }
+  });
+});
+
+app.get('/customer/home', isAuthenticatedCustomer, (req, res) => {
+  const customerId = req.session.customerId;
+  const customerName = req.session.customerName;
+
+  db.query('SELECT id, name, address, rating, estimated_delivery_time FROM sellers', (err, result) => {
+    if (err) {
+      console.error('Error fetching sellers:', err);
+      return res.render('customer/customerHome', { customerName, message: 'Error fetching sellers. Please try again.', sellers: [] });
+    }
+
+    res.render('customer/customerHome', {
+      customerName: customerName,
+      sellers: result.rows,
+      message: ''
+    });
+  });
+});
+
+app.get('/seller/home', isAuthenticatedSeller, (req, res) => {
+  const sellerId = req.session.sellerId;
+  const sellerName = req.session.sellerName;
+
+  res.render('seller/sellerHome', {
+    sellerId: sellerId,
+    sellerName: sellerName,
+    message:''
+  });
+});
+
+app.post('/rate-seller/:id/:rating', (req, res) => {
+  const sellerId = req.params.id;
+  let newRating = parseFloat(req.params.rating);
+
+  // If newRating is NaN (e.g., if no stars are selected), set it to 0
+  if (isNaN(newRating)) {
+    newRating = 0;
+  }
+
+  db.query('SELECT rating, rating_count FROM sellers WHERE id = $1', [sellerId], (err, result) => {
+    if (err) {
+      console.error('Error fetching seller:', err);
+      return res.json({ success: false });
+    }
+
+    const seller = result.rows[0];
+    const currentRating = seller.rating || 0;
+    const ratingCount = seller.rating_count || 0;
+
+    const updatedRating = ((currentRating * ratingCount) + newRating) / (ratingCount + 1);
+
+    db.query('UPDATE sellers SET rating = $1, rating_count = $2 WHERE id = $3', 
+      [parseFloat(updatedRating.toFixed(1)), ratingCount + 1, sellerId], (err) => {
+      if (err) {
+        console.error('Error updating rating:', err);
+        return res.json({ success: false });
+      }
+      res.json({ success: true });
+    });
+  });
+});
+
+app.get('/add-meal', isAuthenticatedSeller, (req, res) => {
+  const sellerName = req.session.sellerName; 
+  res.render('seller/sellerHome', { sellerName, message: '' });
+});
+
+app.post('/add-meal', isAuthenticatedSeller, upload.single('meal_image'), (req, res) => {
+  const { name, price, contents, delivery_time } = req.body;
+  const sellerId = req.session.sellerId;
+  const sellerName = req.session.sellerName;
+
+  const mealImage = req.file ? `/uploads/` +req.file.filename : null;
+
+  if (!mealImage) {
+    return res.render('seller/sellerHome', { sellerName, message: 'Meal image is required.' });
+  }
+
+  db.query('INSERT INTO meals (seller_id, seller_name, name, price, contents, delivery_time, image_url) VALUES ($1, $2, $3, $4, $5, $6, $7)', 
+    [sellerId, sellerName, name, price, contents, delivery_time, mealImage], (err) => {
+    if (err) {
+      console.error('Error adding meal:', err);
+      return res.render('seller/sellerHome', { message: 'Error adding meal. Please try again.', sellerName });
+    }
+    res.render('seller/sellerHome', { message: 'Meal added successfully', sellerName });
+  });
+});
+
+app.get('/view-meals', isAuthenticatedSeller, (req, res) => {
+  const sellerId = req.session.sellerId;
+  const sellerName = req.session.sellerName;
+  db.query('SELECT * FROM meals WHERE seller_id = $1', [sellerId], (err, result) => {
+    if (err) {
+      console.error('Error fetching meals:', err);
+      return res.redirect('/seller/sellerHome');
+    }
+    res.render('seller/viewMeals', { meals: result.rows, sellerName });
+  });
+});
+
+app.get('/update-meal/:id', isAuthenticatedSeller, (req, res) => {
+  const { id } = req.params;
+  const sellerName = req.session.sellerName;
+  db.query('SELECT * FROM meals WHERE id = $1', [id], (err, result) => {
+    if (err) {
+      console.error('Error fetching meal for update:', err);
+      return res.redirect('/view-meals');
+    }
+    if (result.rows.length > 0) {
+      res.render('seller/updateMeal',{ meal: result.rows[0], sellerName });
+    } else {
+      res.redirect('/view-meals'); 
+    }
+  });
+});
+
+app.post('/update-meal', isAuthenticatedSeller, upload.single('meal_image'), (req, res) => {
+  const { id, name, price, contents, delivery_time } = req.body;
+  let mealImage = req.file ? `/uploads/` +req.file.filename : null ; 
+  const getMealQuery = 'SELECT image_url FROM meals WHERE id = $1';
+  db.query(getMealQuery, [id], (err, result) => {
+    if (err) {
+      console.error('Error fetching meal:', err);
+      return res.render('seller/updateMeal', { message: 'Error fetching meal. Please try again.', meal: { id, name, price, contents, delivery_time }, sellerName });
+    }
+
+    const oldImageUrl = result.rows.length > 0 ? result.rows[0].image_url : null;
+    
+    mealImage = mealImage || oldImageUrl;
+
+    const updateMealQuery = 'UPDATE meals SET name = $1, price = $2, contents = $3, delivery_time = $4, image_url = $5 WHERE id = $6';
+    db.query(updateMealQuery, [name, price, contents, delivery_time, mealImage, id], (err) => {
+      if (err) {
+        console.error('Error updating meal:', err);
+        return res.render('seller/updateMeal', { message: 'Error updating meal. Please try again.', meal: { id, name, price, contents, delivery_time }, sellerName });
+      }
+      res.redirect('/view-meals');
+    });
+  });
+});
+
+app.post('/delete-meal/:id', isAuthenticatedSeller, (req, res) => {
+  const { id } = req.params;
+  const sellerName = req.session.sellerName; 
+  db.query('DELETE FROM meals WHERE id = $1', [id], (err) => {
+    if (err) {
+      console.error('Error deleting meal:', err);
+      return res.render('seller/deleteMeal', { message: 'Error deleting meal. Please try again.', meal: { id } ,sellerName});
+    }
+    res.redirect('/view-meals');
+  });
+});
+
+app.get('/view-seller-meals/:id', (req, res) => {
+  const sellerId = req.params.id;
+  const customerName = req.session.customerName;
+  const cartCount = req.session.cart ? req.session.cart.length : 0;
+
+  db.query('SELECT * FROM meals WHERE seller_id = $1', [sellerId], (err, result) => {
+    if (err) {
+      console.error('Error fetching meals:', err);
+      return res.render('customer/viewAllSellers', { message: 'Error fetching meals. Please try again.', customerName });
+    }
+
+    db.query('SELECT * FROM sellers WHERE id = $1', [sellerId], (err, sellerResult) => {
+      if (err) {
+        console.error('Error fetching seller:', err);
+        return res.render('customer/viewAllSellers', { message: 'Error fetching seller. Please try again.', customerName });
+      }
+
+      const seller = sellerResult.rows[0];
+      res.render('customer/viewSellerMeals', { meals: result.rows, seller, customerName, cartCount });
+    });
+  });
+});
+
+app.get('/cart', isAuthenticatedCustomer, (req, res) => {
+  const customerName = req.session.customerName;
+  const cartItems = req.session.cart ? req.session.cart : [];
+  const cartCount = cartItems.length;
+
+  res.render('customer/cart', { customerName, cartItems, cartCount });
+});
+
+app.post('/cart/add', (req, res) => {
+  const mealId = req.body.mealId;
+  const mealName = req.body.mealName;
+  const mealPrice= req.body.mealPrice;
+  const mealContents = req.body.mealContents;
+  const mealDelivery=req.body.mealDelivery;
+  const mealSeller=req.body.mealSeller;
+  const mealImage=req.body.mealImage;
+  if (!req.session.cart) {
+    req.session.cart = [];
+  }
+  req.session.cart.push({ id: mealId, name: mealName, price: mealPrice, contents: mealContents, delivery_time: mealDelivery, seller_name:mealSeller, image_url: mealImage });
+  res.json({ cartCount: req.session.cart.length });
+});
+
+app.post('/add-to-cart/:mealId', isAuthenticatedCustomer, (req, res) => {
+  const mealId = req.params.mealId;
+
+  db.query('SELECT * FROM meals WHERE id = $1', [mealId], (err, result) => {
+    if (err || result.rows.length === 0) {
+      return res.redirect('/view-seller-meals/' + req.session.sellerId);
+    }
+    const meal = result.rows[0];
+    if (!req.session.cart) {
+      req.session.cart = [];
+    }
+    if (!req.session.cart.some(item => item.id === meal.id)) {
+      req.session.cart.push({
+        id: meal.id,
+        name: meal.name,
+        price: meal.price,
+        contents: meal.contents,
+        delivery_time: meal.delivery_time,
+        seller_name: meal.seller_name,
+        image_url: meal.image_url 
+      });
+    }
+
+    res.redirect('/cart');
+  });
+});
+
+app.post('/remove-from-cart/:id', (req, res) => {
+  const mealId = req.params.id;
+  if (req.session.cart) {
+    req.session.cart = req.session.cart.filter(item => item.id !== mealId);
+  }
+  res.redirect('/cart');
+});
+
+app.get('/order/:mealId', isAuthenticatedCustomer, (req, res) => {
+  const mealId = req.params.mealId;
+
+  db.query('SELECT * FROM meals WHERE id = $1', [mealId], (err, result) => {
+    if (err || result.rows.length === 0) {
+      console.error('Error fetching meal:', err);
+      return res.redirect('/customer/home');
+    }
+
+    const meal = result.rows[0]; 
+
+    res.render('customer/ordernow', {
+      customerName: req.session.customerName,
+      meal: meal, 
+      cartCount: req.session.cart ? req.session.cart.length : 0
+    });
+  });
+});
+
+app.post('/checkout', isAuthenticatedCustomer, (req, res) => {
+  const customerName = req.session.customerName;
+  const cartItems = req.session.cart ? req.session.cart : [];
+
+  if (cartItems.length === 0) {
+    return res.redirect('/cart'); 
+  }
+
+  res.render('customer/orderCart', { cartItems, customerName });
+});
+
+app.get('/payment-confirmation', (req, res) => {
+ // const cartCount=0;
+ // const cartItems=[];
+  const customerName = req.session.customerName;
+  res.render('customer/payment-confirmation', { customerName:customerName });//,cartCount:cartCount });
+});
+
+app.post('/create-order', async (req, res) => {
+  const { amount } = req.body;
+
+  try {
+    const order = await razorpay.orders.create({
+      amount: amount,
+      currency: "INR",
+      payment_capture: 1
+    });
+
+    res.json({
+      id: order.id,
+      amount: order.amount
+    });
+  } catch (error) {
+    console.error('Error creating order:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+app.listen(port, () => {
+  console.log(`Server is running on port ${port}`);
+}); 

@@ -1,0 +1,42 @@
+<%- include('../partials/customerHeader', { customerName: customerName}) %>
+
+<body>
+  <% if (message) { %>
+    <div class="message error"><%= message %></div>
+  <% } %>
+
+  <h1>View All Sellers</h1>
+  
+  <div class="sellers-container">
+    <% sellers.forEach(seller => { %>
+      <div class="seller-box">
+        <button onclick="window.location.href='/view-seller-meals/<%= seller.id %>'">
+          <h2><%= seller.name %></h2>
+        </button>
+        <p><strong>Location:</strong> <%= seller.address %></p>
+        <p><strong>Rating:</strong> <%= seller.rating %></p>
+        <p><strong>Estimated Delivery Time:</strong> <%= seller.estimated_delivery_time %></p>
+        <button onclick="openRatingModal('<%= seller.id %>', '<%= seller.name %>')">Rate</button>
+      </div>
+    <% }) %>
+  </div>
+
+  <!-- Rating Modal -->
+  <div id="ratingModal" class="modal">
+    <div class="modal-content">
+      <span class="close" onclick="closeRatingModal()">&times;</span>
+      <h2>Rate the Seller</h2>
+      <p id="modalSellerName"></p>
+      <div class="rating-stars">
+        <% for (let i = 1; i <= 5; i++) { %>
+          <span class="star" data-value="<%= i %>">&#9734;</span>
+        <% } %>
+      </div>
+      <button id="submitRating" data-value="0">Submit</button>
+    </div>
+  </div>
+  
+  <script src="/js/rating.js"></script>
+</body>
+
+  <%- include('../partials/footer') %>

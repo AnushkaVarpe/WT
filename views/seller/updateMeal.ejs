@@ -1,0 +1,33 @@
+<%- include('../partials/sellerHeader', { sellerName: sellerName }) %>
+
+<body>
+  <h1>Update Meal</h1>
+  
+  <form action="/update-meal" method="post" enctype="multipart/form-data">
+    <input type="hidden" name="id" value="<%= meal.id %>">
+
+    <label for="name">Meal Name:</label>
+    <input type="text" id="name" name="name" value="<%= meal.name %>" required>
+
+    <label for="price">Price:</label>
+    <input type="number" step="0.01" id="price" name="price" value="<%= meal.price %>" required>
+
+    <label for="contents">Contents:</label>
+    <textarea id="contents" name="contents" required><%= meal.contents %></textarea>
+
+    <label for="delivery_time">Delivery Time:</label>
+    <input type="time" id="delivery_time" name="delivery_time" value="<%= meal.delivery_time %>" required>
+
+    <label for="meal_image">Meal Image:</label>
+    <input type="file" id="meal_image" name="meal_image">
+
+    <% if (meal.image_url) { %>
+      <p>Current Image:</p>
+      <img src="<%= meal.image_url %>" alt="<%= meal.name %>" width="100">
+    <% } %>
+
+    <button type="submit">Update Meal</button>
+  </form>
+</body>
+
+<%- include('../partials/footer') %>

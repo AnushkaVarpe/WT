@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Add Meal</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+    <header>
+        <h1>Add a New Meal</h1>
+        <nav>
+            <ul>
+                <li><a href="/seller/home">Add a meal</a></li>
+                <li><a href="/view-meals">View All Meals</a></li>
+            </ul>
+        </nav>
+        <% if (sellerName) { %>
+            <div class="seller-info">
+                <p>Welcome, <%= sellerName %>!</p>
+            </div>
+        <% } %>
+    </header>
