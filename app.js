@@ -595,6 +595,11 @@ app.post('/create-order', async (req, res) => {
   }
 });
 
+app.get('/customer/orders', (req, res) => {
+   const customerName = req.session.customerName;
+   res.render('customer/orders', { customerName:customerName });
+});
+
 app.get('/get-branch-name/:ifsc', async (req, res) => {
   const IFSC = req.params.ifsc;
 
