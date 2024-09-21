@@ -2,6 +2,7 @@
 
 <body>
   <h1>Confirm Your Order</h1>
+
   <div class="meal-container">
     <% if (cartItems.length > 0) { %>
       <% cartItems.forEach(item => { %>
@@ -21,15 +22,44 @@
         </div>
       <% }) %>
     </div>  
-    <button id="pay-button" style="position: static; margin-top:20px; margin-bottom:20px; margin-left: 47%;">Pay</button>
+
+    <div class="location-info">
+      <p><strong>Choose Delivery Location:</strong></p>
+      
+      <label>
+        <input type="checkbox" id="use-current-location" onchange="toggleAddressInput()">
+        Use my current location: <%= customerLocation %>
+      </label>
+      
+      <div id="new-address-container">
+        <p>Or enter a new delivery address:</p>
+        <input type="text" id="delivery-address" placeholder="Enter your delivery address">
+      </div>
+      <p id="location-error" style="color: red; display: none;">Please select or enter a delivery location.</p>
+    </div>
+
+    <button id="pay-button" style="position: static; margin-top:20px; margin-bottom:20px; margin-left: 47%;" disabled>Pay</button>
+
     <% } else { %>
       <h2>Your cart is empty.</h2>
     <% } %>
-  
+
   <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
   <script>
+    // Pay button click event
     document.getElementById('pay-button').onclick = function (e) {
-      e.preventDefault(); 
+      e.preventDefault();
+
+      const useCurrentLocation = document.getElementById('use-current-location').checked;
+      const newAddress = document.getElementById('delivery-address').value.trim();
+
+      if (!useCurrentLocation && !newAddress) {
+        document.getElementById('location-error').style.display = 'block';
+        return;
+      }
+
+      const totalAmount = calculateTotalAmount() * 100;  
+      const deliveryAddress = useCurrentLocation ? "<%= customerLocation %>" : newAddress;
 
       fetch('/create-order', {
         method: 'POST',
@@ -37,7 +67,8 @@
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          amount: calculateTotalAmount() * 100  
+          amount: totalAmount,  
+          address: deliveryAddress  
         })
       })
       .then(response => response.json())
@@ -74,6 +105,7 @@
       .catch(error => console.error('Error:', error));
     }
 
+    // Calculate total amount
     function calculateTotalAmount() {
       let total = 0;
       document.querySelectorAll('.meal-price').forEach(function (priceElement) {
@@ -82,6 +114,42 @@
       });
       return total;
     }
+
+    // Toggle address input visibility and validate form
+    function toggleAddressInput() {
+      const useCurrentLocation = document.getElementById('use-current-location');
+      const newAddressContainer = document.getElementById('new-address-container');
+      const payButton = document.getElementById('pay-button');
+
+      if (useCurrentLocation.checked) {
+        newAddressContainer.style.display = 'none';
+        payButton.disabled = false;
+        document.getElementById('location-error').style.display = 'none';
+      } else {
+        newAddressContainer.style.display = 'block';
+        validateLocation();
+      }
+    }
+
+    // Validate address input
+    function validateLocation() {
+      const newAddress = document.getElementById('delivery-address').value.trim();
+      const payButton = document.getElementById('pay-button');
+      const locationError = document.getElementById('location-error');
+
+      if (newAddress) {
+        payButton.disabled = false;
+        locationError.style.display = 'none';
+      } else {
+        payButton.disabled = true;
+      }
+    }
+
+    // Add event listener to address input field
+    document.getElementById('delivery-address').addEventListener('input', validateLocation);
+
+    // Initialize validation on page load
+    toggleAddressInput();
   </script>
 </body>
 

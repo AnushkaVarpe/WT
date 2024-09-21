@@ -95,15 +95,13 @@ app.post('/seller/bankDetails', async (req, res) => {
 
   try {
     const result = await db.query('SELECT * FROM bank_details WHERE seller_id = $1', [sellerId]);
-    const editMode = result.rows.length > 0; // Determine if edit mode or not
+    const editMode = result.rows.length > 0; 
 
     if (editMode) {
-      // Update existing bank details
       const updateQuery = 'UPDATE bank_details SET bank_name=$1, account_holder_name=$2, account_number=$3, ifsc_code=$4, bank_branch=$5, contact_number=$6 WHERE seller_id = $7';
       await db.query(updateQuery, [bankName, accHolderName, accNumber, IFSC, bank_branch, contact, sellerId]);
       res.redirect('/seller/home');
     } else {
-      // Insert new bank details
       const insertQuery = 'INSERT INTO bank_details (seller_id, bank_name, account_holder_name, account_number, ifsc_code, bank_branch, contact_number) VALUES ($1, $2, $3, $4, $5, $6, $7)';
       await db.query(insertQuery, [sellerId, bankName, accHolderName, accNumber, IFSC, bank_branch, contact]);
       res.redirect('/seller/home');
@@ -111,11 +109,11 @@ app.post('/seller/bankDetails', async (req, res) => {
   } catch (error) {
     console.error('Error adding/updating bank details:', error);
     const result = await db.query('SELECT * FROM bank_details WHERE seller_id = $1', [sellerId]);
-    const editMode = result.rows.length > 0; // Determine if edit mode or not
+    const editMode = result.rows.length > 0; 
     res.render('seller/bankDetails', {
       sellerName: sellerName,
       message: 'Error adding/updating bank details. Please try again.',
-      editMode: editMode, // Pass editMode correctly
+      editMode: editMode, 
       bankDetails: { bank_name: bankName, account_holder_name: accHolderName, account_number: accNumber, ifsc_code: IFSC, bank_branch: bank_branch, contact_number: contact } // Keep user input
     });
   }
@@ -296,7 +294,6 @@ app.post('/rate-seller/:id/:rating', (req, res) => {
   const sellerId = req.params.id;
   let newRating = parseFloat(req.params.rating);
 
-  // If newRating is NaN (e.g., if no stars are selected), set it to 0
   if (isNaN(newRating)) {
     newRating = 0;
   }
@@ -420,7 +417,7 @@ app.get('/view-seller-meals/:id', (req, res) => {
   const customerName = req.session.customerName;
   const cartCount = req.session.cart ? req.session.cart.length : 0;
 
-  db.query('SELECT * FROM meals WHERE seller_id = $1', [sellerId], (err, result) => {
+  db.query('SELECT * FROM meals WHERE seller_id = $1 AND is_enabled = true', [sellerId], (err, result) => {
     if (err) {
       console.error('Error fetching meals:', err);
       return res.render('customer/viewAllSellers', { message: 'Error fetching meals. Please try again.', customerName });
@@ -434,6 +431,28 @@ app.get('/view-seller-meals/:id', (req, res) => {
 
       const seller = sellerResult.rows[0];
       res.render('customer/viewSellerMeals', { meals: result.rows, seller, customerName, cartCount });
+    });
+  });
+});
+
+app.post('/toggle-meal-status/:id', (req, res) => {
+  const mealId = req.params.id;
+
+  db.query('SELECT is_enabled FROM meals WHERE id = $1', [mealId], (err, result) => {
+    if (err || result.rows.length === 0) {
+      console.error('Error fetching meal:', err);
+      return res.redirect('/seller/home'); 
+    }
+
+    const currentStatus = result.rows[0].is_enabled;
+    const newStatus = !currentStatus; 
+
+    db.query('UPDATE meals SET is_enabled = $1 WHERE id = $2', [newStatus, mealId], (err) => {
+      if (err) {
+        console.error('Error updating meal status:', err);
+        return res.redirect('/seller/home');
+      }
+      res.redirect('/view-meals'); 
     });
   });
 });
@@ -498,33 +517,58 @@ app.post('/remove-from-cart/:id', (req, res) => {
 
 app.get('/order/:mealId', isAuthenticatedCustomer, (req, res) => {
   const mealId = req.params.mealId;
+  const customerId = req.session.customerId; 
 
-  db.query('SELECT * FROM meals WHERE id = $1', [mealId], (err, result) => {
-    if (err || result.rows.length === 0) {
+  db.query('SELECT * FROM meals WHERE id = $1', [mealId], (err, mealResult) => {
+    if (err || mealResult.rows.length === 0) {
       console.error('Error fetching meal:', err);
       return res.redirect('/customer/home');
     }
 
-    const meal = result.rows[0]; 
+    db.query('SELECT address FROM customers WHERE id = $1', [customerId], (err, customerResult) => {
+      if (err || customerResult.rows.length === 0) {
+        console.error('Error fetching customer address:', err);
+        return res.redirect('/customer/home');
+      }
 
-    res.render('customer/ordernow', {
-      customerName: req.session.customerName,
-      meal: meal, 
-      cartCount: req.session.cart ? req.session.cart.length : 0
+      const meal = mealResult.rows[0]; 
+      const customerLocation = customerResult.rows[0].address || 'Not specified'; 
+
+      res.render('customer/ordernow', {
+        customerName: req.session.customerName,
+        meal: meal, 
+        customerLocation: customerLocation,
+        cartCount: req.session.cart ? req.session.cart.length : 0
+      });
     });
   });
 });
 
 app.post('/checkout', isAuthenticatedCustomer, (req, res) => {
+  const customerId = req.session.customerId;  
   const customerName = req.session.customerName;
   const cartItems = req.session.cart ? req.session.cart : [];
 
   if (cartItems.length === 0) {
-    return res.redirect('/cart'); 
+    return res.redirect('/cart');
   }
 
-  res.render('customer/orderCart', { cartItems, customerName });
+  db.query('SELECT address FROM customers WHERE id = $1', [customerId], (err, result) => {
+    if (err) {
+      console.error('Error fetching customer address:', err);
+      return res.redirect('/cart');
+    }
+
+    const customerLocation = result.rows[0].address || 'Not specified';
+
+    res.render('customer/orderCart', {
+      cartItems,
+      customerName,
+      customerLocation 
+    });
+  });
 });
+
 
 app.get('/payment-confirmation', (req, res) => {
  // const cartCount=0;
@@ -564,11 +608,30 @@ app.get('/get-branch-name/:ifsc', async (req, res) => {
       res.json({ branch: null });
     }
   } catch (error) {
-    console.error('Error fetching IFSC details:', error.message);  // Log the actual error
+    console.error('Error fetching IFSC details:', error.message);  
     res.json({ branch: null });
   }
 });
 
+app.post('/logout/seller', (req, res) => {
+  req.session.destroy(err => {
+    if (err) {
+      console.error('Error during seller logout:', err);
+      return res.redirect('/seller/home');
+    }
+    res.redirect('/seller/login'); 
+  });
+});
+
+app.post('/logout/customer', (req, res) => {
+  req.session.destroy(err => {
+    if (err) {
+      console.error('Error during customer logout:', err);
+      return res.redirect('/customer/home');
+    }
+    res.redirect('/customer/login'); 
+  });
+});
 
 app.listen(port, () => {
   console.log(`Server is running on port ${port}`);

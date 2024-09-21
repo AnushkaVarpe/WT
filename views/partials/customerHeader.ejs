@@ -18,7 +18,11 @@
             <div class="customer-info">
                 <p>Welcome, <%= customerName %>!</p>
             </div>
+            <form class="noform" action="/logout/customer" method="POST">
+                <button class="logout" type="submit">Logout</button>
+            </form>
         <% } %>
+        
         <div class="cart-icon">
             <a href="/cart">
                 <img style="width: 30px; height: auto;" src="/icons/605508_bag_buy_cart_item_sale_icon.png" class="shopping-cart"/>

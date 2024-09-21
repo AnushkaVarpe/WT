@@ -7,8 +7,8 @@ body {
 
 .seller-info {
   position: absolute;
-  top: 80px;
-  right: 20px;
+  top: 60px;
+  right: 100px;
   background-color: #42dcff;
   padding: 10px;
   border-radius: 5px;
@@ -24,11 +24,27 @@ body {
 .customer-info {
   position: absolute;
   top: 60px;
-  right: 20px;
+  right: 100px;
   background-color: #42dcff;
   padding: 10px;
   border-radius: 5px;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.logout{ 
+  position: absolute;
+  top: 60px;
+  right: 20px;
+  background-color: #42dcff;
+  color: #333;
+  font-weight: bold;
+  padding: 10px;
+  border-radius: 5px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.noform button:hover {
+  background-color: #00b5ded3;
 }
 
 .customer-info p {
@@ -36,6 +52,7 @@ body {
   font-weight: bold;
   color: #333;
 }
+
 footer {
   background-color: #333;
   color: #fff;
@@ -65,6 +82,12 @@ h2{
   color: #d9534f; 
   background-color: #f2dede; 
   border: 1px solid #d9534f; 
+}
+
+.noform{
+  margin: 0;
+  padding: 0;
+  border: none;
 }
 
 form {
@@ -151,6 +174,10 @@ main {
     padding: 2rem;
 }
 
+.meal-card.disabled {
+  opacity: 0.5;
+}
+
 .meal-container {
   display: flex;
   flex-wrap: wrap;
@@ -207,19 +234,18 @@ main {
 .meal-actions {
   margin-top: 50px !important;
   display: flex;
-  gap: 20px;
+  gap:15px;
 }
 
 .meal-actions form {
   margin: 0;
+  padding: 0px;
 }
 
 .meal-actions button {
-  padding: 4px 6px;
-  border: none;
   background-color: #007bff;
   color: white;
-  border-radius: 3px;
+  border-radius: 4px;
   cursor: pointer;
 }
 
@@ -412,3 +438,35 @@ main {
   border-radius: 5px;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
+
+  .location-info {
+    margin: 20px 0;
+    padding: 15px;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    background-color: #f9f9f9;
+  }
+
+  .location-info p {
+    font-size: 18px;
+    margin: 10px 0;
+  }
+
+  .location-info input[type="text"] {
+    width: calc(100% - 22px);
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 16px;
+    margin-top: 10px;
+  }
+
+  .location-info input[type="text"]:focus {
+    border-color: #007bff;
+    outline: none;
+  }
+
+  .location-info label {
+    display: block;
+    margin-bottom: 10px;
+  }

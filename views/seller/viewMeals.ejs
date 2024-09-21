@@ -3,7 +3,7 @@
   <h1>All Meals</h1>
   <div class="meal-container">
     <% meals.forEach(meal => { %>
-      <div class="meal-card">
+      <div class="meal-card <%= meal.is_enabled ? '' : 'disabled' %>">
         <div class="meal-content">
           <h2 class="meal-name"><%= meal.name %></h2>
           <p><strong>Price:</strong> ₹<%= meal.price %></p>
@@ -12,19 +12,21 @@
           <p><strong>Seller:</strong> <%= meal.seller_name %></p>
           <div class="meal-actions">
             <form action="/update-meal/<%= meal.id %>" method="get">
-              <input type="hidden" name="id" value="<%= meal.id %>">
               <button type="submit">Update</button>
             </form>
             <form action="/delete-meal/<%= meal.id %>" method="post">
-              <input type="hidden" name="id" value="<%= meal.id %>">
               <button type="submit">Delete</button>
             </form>
+            <form action="/toggle-meal-status/<%= meal.id %>" method="post">
+              <button type="submit"><%= meal.is_enabled ? 'Disable' : 'Enable' %></button>
+            </form>
+            
           </div>
         </div>
         <div class="img-box">
           <% if (meal.image_url) { %>
             <img class="meal-img" src="<%= meal.image_url %>" alt="<%= meal.name %>">
-          <% } %>        
+          <% } %>
         </div>
       </div>
     <% }) %>
