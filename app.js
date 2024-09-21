@@ -7,6 +7,7 @@ import dotenv from 'dotenv';
 import multer from 'multer';
 import path from 'path';
 import Razorpay from 'razorpay';
+import axios from 'axios';
 dotenv.config();
                  
 const storage = multer.diskStorage({
@@ -47,11 +48,11 @@ const razorpay = new Razorpay({
 
 app.use((req, res, next) => {
   if (req.session.cart) {
-    res.locals.cartCount = req.session.cart.length; // Calculate cart count
+    res.locals.cartCount = req.session.cart.length;
   } else {
-    res.locals.cartCount = 0; // If no cart, cart count is 0
+    res.locals.cartCount = 0; 
   }
-  next(); // Proceed to the next middleware or route handler
+  next(); 
 });
 
 app.get('/', (req, res) => {
@@ -60,6 +61,64 @@ app.get('/', (req, res) => {
 
 app.get('/customer/login', (req, res) => {
   res.render('customer/customerLogin', { message: '' });
+});
+
+app.get('/seller/bankDetails', async (req, res) => {
+  const sellerId = req.session.sellerId; 
+  const sellerName = req.session.sellerName;
+
+  try {
+    const result = await db.query('SELECT * FROM bank_details WHERE seller_id = $1', [sellerId]);
+    const editMode = result.rows.length > 0;
+    res.render('seller/bankDetails', {
+      sellerName: sellerName,
+      editMode: editMode, 
+      message: '',
+      bankDetails: result.rows[0] || {} 
+    });
+  } catch (error) {
+    console.error('Error fetching bank details:', error);
+    res.render('seller/bankDetails', { 
+      sellerName: sellerName,
+      message: 'Error fetching bank details. Please try again.',
+      editMode: false, 
+      bankDetails: {}
+    });
+  }
+});
+
+app.post('/seller/bankDetails', async (req, res) => {
+  const sellerId = req.session.sellerId;
+  const sellerName = req.session.sellerName;
+
+  const { bankName, accHolderName, accNumber, IFSC, bank_branch, contact } = req.body;
+
+  try {
+    const result = await db.query('SELECT * FROM bank_details WHERE seller_id = $1', [sellerId]);
+    const editMode = result.rows.length > 0; // Determine if edit mode or not
+
+    if (editMode) {
+      // Update existing bank details
+      const updateQuery = 'UPDATE bank_details SET bank_name=$1, account_holder_name=$2, account_number=$3, ifsc_code=$4, bank_branch=$5, contact_number=$6 WHERE seller_id = $7';
+      await db.query(updateQuery, [bankName, accHolderName, accNumber, IFSC, bank_branch, contact, sellerId]);
+      res.redirect('/seller/home');
+    } else {
+      // Insert new bank details
+      const insertQuery = 'INSERT INTO bank_details (seller_id, bank_name, account_holder_name, account_number, ifsc_code, bank_branch, contact_number) VALUES ($1, $2, $3, $4, $5, $6, $7)';
+      await db.query(insertQuery, [sellerId, bankName, accHolderName, accNumber, IFSC, bank_branch, contact]);
+      res.redirect('/seller/home');
+    }
+  } catch (error) {
+    console.error('Error adding/updating bank details:', error);
+    const result = await db.query('SELECT * FROM bank_details WHERE seller_id = $1', [sellerId]);
+    const editMode = result.rows.length > 0; // Determine if edit mode or not
+    res.render('seller/bankDetails', {
+      sellerName: sellerName,
+      message: 'Error adding/updating bank details. Please try again.',
+      editMode: editMode, // Pass editMode correctly
+      bankDetails: { bank_name: bankName, account_holder_name: accHolderName, account_number: accNumber, ifsc_code: IFSC, bank_branch: bank_branch, contact_number: contact } // Keep user input
+    });
+  }
 });
 
 app.get('/register/customer', (req, res) => {
@@ -476,14 +535,12 @@ app.get('/payment-confirmation', (req, res) => {
 
 app.post('/create-order', async (req, res) => {
   const { amount } = req.body;
-
   try {
     const order = await razorpay.orders.create({
       amount: amount,
       currency: "INR",
       payment_capture: 1
     });
-
     res.json({
       id: order.id,
       amount: order.amount
@@ -493,6 +550,25 @@ app.post('/create-order', async (req, res) => {
     res.status(500).json({ error: 'Internal Server Error' });
   }
 });
+
+app.get('/get-branch-name/:ifsc', async (req, res) => {
+  const IFSC = req.params.ifsc;
+
+  try {
+    const response = await axios.get(`https://ifsc.razorpay.com/${IFSC}`);
+    
+    if (response.data && response.data.BRANCH) {
+      res.json({ branch: response.data.BRANCH });
+    } else {
+      console.error('Branch not found for IFSC:', IFSC);
+      res.json({ branch: null });
+    }
+  } catch (error) {
+    console.error('Error fetching IFSC details:', error.message);  // Log the actual error
+    res.json({ branch: null });
+  }
+});
+
 
 app.listen(port, () => {
   console.log(`Server is running on port ${port}`);

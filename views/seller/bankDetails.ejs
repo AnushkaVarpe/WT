@@ -1,0 +1,52 @@
+<%- include('../partials/sellerHeader', { sellerName: sellerName }) %>
+<body>
+  <% if (message) { %>
+    <div class="message error"><%= message %></div>
+  <% } %>
+  <h1><%= editMode ? 'Edit Bank Details' : 'Add Bank Details' %></h1>
+
+<form action="/seller/bankDetails" method="post">
+  <label for="bankName">Bank Name</label>
+  <input type="text" id="bankName" name="bankName" value="<%= bankDetails.bank_name || '' %>" required>
+
+  <label for="accHolderName">Account Holder Name</label>
+  <input type="text" id="accHolderName" name="accHolderName" value="<%= bankDetails.account_holder_name || '' %>" required>
+
+  <label for="accNumber">Account Number</label>
+  <input type="text" id="accNumber" name="accNumber" value="<%= bankDetails.account_number || '' %>" required>
+
+  <label for="IFSC">IFSC Code</label>
+  <input type="text" id="IFSC" name="IFSC" value="<%= bankDetails.ifsc_code || '' %>" required>
+
+  <label for="bank_branch">Branch</label>
+  <input type="text" id="bank_branch" name="bank_branch" value="<%= editMode ? bankDetails.bank_branch || '' : '' %>" required readonly>
+
+  <label for="contact">Contact Number</label>
+  <input type="tel" id="contact" name="contact" value="<%= bankDetails.contact_number || '' %>" required>
+
+  <button type="submit"><%= editMode ? 'Update' : 'Submit' %></button>
+</form>
+</body>
+<%- include('../partials/footer') %>
+<script>
+  document.getElementById('IFSC').addEventListener('blur', function() {
+  const IFSC = this.value;
+  if (IFSC) {
+    fetch(`/get-branch-name/${IFSC}`)
+      .then(response => response.json())
+      .then(data => {
+        if (data.branch) {
+          document.getElementById('bank_branch').value = data.branch; // Update this line
+        } else {
+          alert('Invalid IFSC code or no branch found!');
+        }
+      })
+      .catch(error => {
+        console.error('Error fetching branch details:', error);
+        alert('Error fetching branch details. Please try again.');
+      });
+  }
+});
+
+  </script>
+  
