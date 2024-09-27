@@ -47,11 +47,7 @@ const razorpay = new Razorpay({
 });
 
 app.use((req, res, next) => {
-  if (req.session.cart) {
-    res.locals.cartCount = req.session.cart.length;
-  } else {
-    res.locals.cartCount = 0; 
-  }
+  res.locals.cartCount = req.session.cart ? req.session.cart.length : 0;
   next(); 
 });
 
@@ -61,6 +57,18 @@ app.get('/', (req, res) => {
 
 app.get('/customer/login', (req, res) => {
   res.render('customer/customerLogin', { message: '' });
+});
+
+app.get('/register/customer', (req, res) => {
+  res.render('customer/customerRegister', { message: '' });
+});
+
+app.get('/seller/login', (req, res) => {
+  res.render('seller/sellerLogin', { message: '' });
+});
+
+app.get('/register/seller', (req, res) => {
+  res.render('seller/sellerRegister', { message: '' });
 });
 
 app.get('/seller/bankDetails', async (req, res) => {
@@ -117,18 +125,6 @@ app.post('/seller/bankDetails', async (req, res) => {
       bankDetails: { bank_name: bankName, account_holder_name: accHolderName, account_number: accNumber, ifsc_code: IFSC, bank_branch: bank_branch, contact_number: contact } // Keep user input
     });
   }
-});
-
-app.get('/register/customer', (req, res) => {
-  res.render('customer/customerRegister', { message: '' });
-});
-
-app.get('/seller/login', (req, res) => {
-  res.render('seller/sellerLogin', { message: '' });
-});
-
-app.get('/register/seller', (req, res) => {
-  res.render('seller/sellerRegister', { message: '' });
 });
 
 const isAuthenticatedSeller = (req, res, next) => {
@@ -265,7 +261,7 @@ app.get('/customer/home', isAuthenticatedCustomer, (req, res) => {
   const customerId = req.session.customerId;
   const customerName = req.session.customerName;
 
-  db.query('SELECT id, name, address, rating, estimated_delivery_time FROM sellers', (err, result) => {
+  db.query('SELECT id, name, address, rating FROM sellers', (err, result) => {
     if (err) {
       console.error('Error fetching sellers:', err);
       return res.render('customer/customerHome', { customerName, message: 'Error fetching sellers. Please try again.', sellers: [] });
@@ -327,7 +323,7 @@ app.get('/add-meal', isAuthenticatedSeller, (req, res) => {
 });
 
 app.post('/add-meal', isAuthenticatedSeller, upload.single('meal_image'), (req, res) => {
-  const { name, price, contents, delivery_time } = req.body;
+  const { name, price, contents, prep_time } = req.body;
   const sellerId = req.session.sellerId;
   const sellerName = req.session.sellerName;
 
@@ -337,8 +333,8 @@ app.post('/add-meal', isAuthenticatedSeller, upload.single('meal_image'), (req, 
     return res.render('seller/sellerHome', { sellerName, message: 'Meal image is required.' });
   }
 
-  db.query('INSERT INTO meals (seller_id, seller_name, name, price, contents, delivery_time, image_url) VALUES ($1, $2, $3, $4, $5, $6, $7)', 
-    [sellerId, sellerName, name, price, contents, delivery_time, mealImage], (err) => {
+  db.query('INSERT INTO meals (seller_id, seller_name, name, price, contents, prep_time, image_url) VALUES ($1, $2, $3, $4, $5, $6, $7)', 
+    [sellerId, sellerName, name, price, contents, prep_time, mealImage], (err) => {
     if (err) {
       console.error('Error adding meal:', err);
       return res.render('seller/sellerHome', { message: 'Error adding meal. Please try again.', sellerName });
@@ -376,24 +372,24 @@ app.get('/update-meal/:id', isAuthenticatedSeller, (req, res) => {
 });
 
 app.post('/update-meal', isAuthenticatedSeller, upload.single('meal_image'), (req, res) => {
-  const { id, name, price, contents, delivery_time } = req.body;
+  const { id, name, price, contents, prep_time } = req.body;
   let mealImage = req.file ? `/uploads/` +req.file.filename : null ; 
   const getMealQuery = 'SELECT image_url FROM meals WHERE id = $1';
   db.query(getMealQuery, [id], (err, result) => {
     if (err) {
       console.error('Error fetching meal:', err);
-      return res.render('seller/updateMeal', { message: 'Error fetching meal. Please try again.', meal: { id, name, price, contents, delivery_time }, sellerName });
+      return res.render('seller/updateMeal', { message: 'Error fetching meal. Please try again.', meal: { id, name, price, contents, prep_time }, sellerName });
     }
 
     const oldImageUrl = result.rows.length > 0 ? result.rows[0].image_url : null;
     
     mealImage = mealImage || oldImageUrl;
 
-    const updateMealQuery = 'UPDATE meals SET name = $1, price = $2, contents = $3, delivery_time = $4, image_url = $5 WHERE id = $6';
-    db.query(updateMealQuery, [name, price, contents, delivery_time, mealImage, id], (err) => {
+    const updateMealQuery = 'UPDATE meals SET name = $1, price = $2, contents = $3, prep_time = $4, image_url = $5 WHERE id = $6';
+    db.query(updateMealQuery, [name, price, contents, prep_time, mealImage, id], (err) => {
       if (err) {
         console.error('Error updating meal:', err);
-        return res.render('seller/updateMeal', { message: 'Error updating meal. Please try again.', meal: { id, name, price, contents, delivery_time }, sellerName });
+        return res.render('seller/updateMeal', { message: 'Error updating meal. Please try again.', meal: { id, name, price, contents, prep_time }, sellerName });
       }
       res.redirect('/view-meals');
     });
@@ -470,13 +466,13 @@ app.post('/cart/add', (req, res) => {
   const mealName = req.body.mealName;
   const mealPrice= req.body.mealPrice;
   const mealContents = req.body.mealContents;
-  const mealDelivery=req.body.mealDelivery;
+  const mealPrep=req.body.mealPrep;
   const mealSeller=req.body.mealSeller;
   const mealImage=req.body.mealImage;
   if (!req.session.cart) {
     req.session.cart = [];
   }
-  req.session.cart.push({ id: mealId, name: mealName, price: mealPrice, contents: mealContents, delivery_time: mealDelivery, seller_name:mealSeller, image_url: mealImage });
+  req.session.cart.push({ id: mealId, name: mealName, price: mealPrice, contents: mealContents, prep_time: mealPrep, seller_name:mealSeller, image_url: mealImage });
   res.json({ cartCount: req.session.cart.length });
 });
 
@@ -497,7 +493,7 @@ app.post('/add-to-cart/:mealId', isAuthenticatedCustomer, (req, res) => {
         name: meal.name,
         price: meal.price,
         contents: meal.contents,
-        delivery_time: meal.delivery_time,
+        prep_time: meal.prep_time,
         seller_name: meal.seller_name,
         image_url: meal.image_url 
       });

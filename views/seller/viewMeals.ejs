@@ -8,7 +8,7 @@
           <h2 class="meal-name"><%= meal.name %></h2>
           <p><strong>Price:</strong> ₹<%= meal.price %></p>
           <p><strong>Contents:</strong> <%= meal.contents %></p>
-          <p><strong>Delivery Time:</strong> <%= meal.delivery_time %></p>
+          <p><strong>Preparation Time:</strong> <%= meal.prep_time %></p>
           <p><strong>Seller:</strong> <%= meal.seller_name %></p>
           <div class="meal-actions">
             <form action="/update-meal/<%= meal.id %>" method="get">

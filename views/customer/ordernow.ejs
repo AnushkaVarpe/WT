@@ -1,56 +1,64 @@
 <%- include('../partials/customerHeader', { customerName: customerName }) %>
 
 <body>
-  <h1>Order Review for <%= meal.name %></h1>
+  <h1>Confirm Your Order</h1>
 
-  <div class="meal-card">
-    <div class="meal-content">
-      <h2 class="meal-name"><%= meal.name %></h2>
-      <p><strong>Price:</strong> ₹<span id="meal-price"><%= meal.price %></span></p>
-      <p><strong>Contents:</strong> <%= meal.contents %></p>
-      <p><strong>Delivery Time:</strong> <%= meal.delivery_time %></p>
-      <p><strong>Seller:</strong> <%= meal.seller_name %></p>
+  <div class="meal-container">
+    <% if (cartItems.length > 0) { %>
+      <% cartItems.forEach(item => { %>
+        <div class="meal-card">
+          <div class="meal-content">
+            <h2 class="meal-name"><%= item.name %></h2>
+            <p><strong>Price:</strong> ₹<span class="meal-price"><%= item.price %></span></p>
+            <p><strong>Contents:</strong> <%= item.contents %></p>
+            <p><strong>Delivery Time:</strong> <%= item.delivery_time %></p>
+            <p><strong>Seller:</strong> <%= item.seller_name %></p>
+          </div>
+          <div class="img-box">
+            <% if (item.image_url) { %>
+              <img class="meal-img" src="<%= item.image_url %>" alt="<%= item.name %>">
+            <% } %>
+          </div>
+        </div>
+      <% }) %>
+    </div>  
+
+    <div class="location-info">
+      <p><strong>Choose Delivery Location:</strong></p>
+      
+      <label>
+        <input type="checkbox" id="use-current-location" onchange="toggleAddressInput()">
+        Use my current location: <%= customerLocation %>
+      </label>
+      
+      <div id="new-address-container">
+        <p>Or enter a new delivery address:</p>
+        <input type="text" id="delivery-address" placeholder="Enter your delivery address">
+      </div>
+      <p id="location-error" style="color: red; display: none;">Please select or enter a delivery location.</p>
     </div>
 
-    <div class="img-box">
-      <% if (meal.image_url) { %>
-        <img class="meal-img" src="<%= meal.image_url %>" alt="<%= meal.name %>">
-      <% } %>
-    </div>
-  </div>
+    <button id="pay-button" style="position: static; margin-top:20px; margin-bottom:20px; margin-left: 47%;" disabled>Pay</button>
 
-  <div class="location-info">
-    <p><strong>Choose Delivery Location:</strong></p>
-    
-    <label>
-      <input type="checkbox" id="use-current-location" onchange="toggleAddressInput()">
-      Use my current location: <%= customerLocation %>
-    </label>
-    
-    <div id="new-address-container">
-      <p>Or enter a new delivery address:</p>
-      <input type="text" id="delivery-address" placeholder="Enter your delivery address">
-    </div>
-    <p id="location-error" style="color: red; display: none;">Please select or enter a delivery location.</p>
-  </div>
-
-  <button id="pay-button" style="position: static; margin-top:20px; margin-bottom:20px; margin-left: 47%;" disabled>Pay</button>
+    <% } else { %>
+      <h2>Your cart is empty.</h2>
+    <% } %>
 
   <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
   <script>
+    // Pay button click event
     document.getElementById('pay-button').onclick = function (e) {
-      e.preventDefault(); 
-      
+      e.preventDefault();
+
       const useCurrentLocation = document.getElementById('use-current-location').checked;
       const newAddress = document.getElementById('delivery-address').value.trim();
-      
+
       if (!useCurrentLocation && !newAddress) {
         document.getElementById('location-error').style.display = 'block';
         return;
       }
 
-      const price = document.getElementById('meal-price').innerText.replace('₹', '').trim();
-      const amountInPaise = parseFloat(price) * 100;
+      const totalAmount = calculateTotalAmount() * 100;  
       const deliveryAddress = useCurrentLocation ? "<%= customerLocation %>" : newAddress;
 
       fetch('/create-order', {
@@ -59,15 +67,15 @@
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          amount: amountInPaise,
-          address: deliveryAddress  // Include the address in the order request
+          amount: totalAmount,  
+          address: deliveryAddress  
         })
       })
       .then(response => response.json())
       .then(data => {
         var options = {
           "key": "<%= process.env.RAZORPAY_KEY_ID %>", 
-          "amount": data.amount, 
+          "amount": data.amount,  
           "currency": "INR",
           "name": "Your Company",
           "description": "Meal Order",
@@ -97,11 +105,22 @@
       .catch(error => console.error('Error:', error));
     }
 
+    // Calculate total amount
+    function calculateTotalAmount() {
+      let total = 0;
+      document.querySelectorAll('.meal-price').forEach(function (priceElement) {
+        const price = parseFloat(priceElement.innerText.replace('₹', '').trim());
+        total += price;
+      });
+      return total;
+    }
+
+    // Toggle address input visibility and validate form
     function toggleAddressInput() {
       const useCurrentLocation = document.getElementById('use-current-location');
       const newAddressContainer = document.getElementById('new-address-container');
       const payButton = document.getElementById('pay-button');
-      
+
       if (useCurrentLocation.checked) {
         newAddressContainer.style.display = 'none';
         payButton.disabled = false;
@@ -112,6 +131,7 @@
       }
     }
 
+    // Validate address input
     function validateLocation() {
       const newAddress = document.getElementById('delivery-address').value.trim();
       const payButton = document.getElementById('pay-button');
@@ -125,6 +145,7 @@
       }
     }
 
+    // Add event listener to address input field
     document.getElementById('delivery-address').addEventListener('input', validateLocation);
 
     // Initialize validation on page load

@@ -15,7 +15,6 @@
         </button>
         <p><strong>Location:</strong> <%= seller.address %></p>
         <p><strong>Rating:</strong> <%= seller.rating %></p>
-        <p><strong>Estimated Delivery Time:</strong> <%= seller.estimated_delivery_time %></p>
         <button onclick="openRatingModal('<%= seller.id %>', '<%= seller.name %>')">Rate</button>
       </div>
     <% }) %>
