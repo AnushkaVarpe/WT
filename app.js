@@ -8,8 +8,7 @@ import multer from 'multer';
 import path from 'path';
 import Razorpay from 'razorpay';
 import axios from 'axios';
-dotenv.config();
-                 
+dotenv.config();          
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     cb(null, './public/uploads');
@@ -469,10 +468,21 @@ app.post('/cart/add', (req, res) => {
   const mealPrep=req.body.mealPrep;
   const mealSeller=req.body.mealSeller;
   const mealImage=req.body.mealImage;
+  const mealSellerId=req.body.mealSellerId;
+
   if (!req.session.cart) {
     req.session.cart = [];
   }
-  req.session.cart.push({ id: mealId, name: mealName, price: mealPrice, contents: mealContents, prep_time: mealPrep, seller_name:mealSeller, image_url: mealImage });
+  req.session.cart.push({
+    id: mealId,
+    name: mealName,
+    price: mealPrice,
+    contents: mealContents,
+    prep_time: mealPrep,
+    seller_name: mealSeller,
+    image_url: mealImage,
+    seller_id: mealSellerId // Make sure sellerId is passed here
+  });
   res.json({ cartCount: req.session.cart.length });
 });
 
@@ -511,50 +521,175 @@ app.post('/remove-from-cart/:id', (req, res) => {
   res.redirect('/cart');
 });
 
-app.get('/order/:mealId', isAuthenticatedCustomer, (req, res) => {
+app.get('/order/:mealId', isAuthenticatedCustomer, async (req, res) => {
   const mealId = req.params.mealId;
-  const customerId = req.session.customerId; 
+  const customerId = req.session.customerId;
 
-  db.query('SELECT * FROM meals WHERE id = $1', [mealId], (err, mealResult) => {
-    if (err || mealResult.rows.length === 0) {
-      console.error('Error fetching meal:', err);
+  try {
+    const mealQuery = `
+      SELECT m.*, s.address AS seller_address, s.name AS seller_name 
+      FROM meals m 
+      JOIN sellers s ON m.seller_id = s.id 
+      WHERE m.id = $1
+    `;
+
+    const mealResult = await db.query(mealQuery, [mealId]);
+    if (mealResult.rows.length === 0) {
       return res.redirect('/customer/home');
     }
 
-    db.query('SELECT address FROM customers WHERE id = $1', [customerId], (err, customerResult) => {
-      if (err || customerResult.rows.length === 0) {
-        console.error('Error fetching customer address:', err);
-        return res.redirect('/customer/home');
-      }
+    const customerResult = await db.query('SELECT address FROM customers WHERE id = $1', [customerId]);
+    if (customerResult.rows.length === 0) {
+      return res.redirect('/customer/home');
+    }
 
-      const meal = mealResult.rows[0]; 
-      const customerLocation = customerResult.rows[0].address || 'Not specified'; 
+    const meal = mealResult.rows[0];
+    const customerLocation = customerResult.rows[0].address || 'Not specified';
 
-      res.render('customer/ordernow', {
-        customerName: req.session.customerName,
-        meal: meal, 
-        customerLocation: customerLocation,
-        cartCount: req.session.cart ? req.session.cart.length : 0
-      });
+    res.render('customer/ordernow', {
+      customerName: req.session.customerName,
+      meal: meal,
+      customerLocation: customerLocation,
+      cartCount: req.session.cart ? req.session.cart.length : 0
     });
-  });
+  } catch (error) {
+    console.error('Error in order retrieval:', error);
+    return res.redirect('/customer/home');
+  }
 });
 
-app.post('/checkout', isAuthenticatedCustomer, (req, res) => {
+const OPEN_ROUTE_SERVICE_API_KEY = '5b3ce3597851110001cf624829d0f33cfb5945af9eca6affb37f167b';
+
+async function geocodeAddress(address) {
+  try {
+    const response = await axios.get('https://api.openrouteservice.org/geocode/search', {
+      params: {
+        text: address,
+        country: 'IN' 
+      },
+      headers: {
+        Authorization: OPEN_ROUTE_SERVICE_API_KEY
+      }
+    });
+
+    if (response.data.features.length > 0) {
+      const coordinates = response.data.features[0].geometry.coordinates;
+      return { longitude: coordinates[0], latitude: coordinates[1] };
+    } else {
+      throw new Error('No coordinates found for the address.');
+    }
+  } catch (error) {
+    console.error('Error geocoding address:', error);
+    throw error;
+  }
+}
+
+async function calculateDistance(sellerAddress, customerAddress) {
+  try {
+    const sellerCoordinates = await geocodeAddress(sellerAddress);
+    const customerCoordinates = await geocodeAddress(customerAddress);
+
+    console.log(`Calculating distance from ${sellerCoordinates.latitude}, ${sellerCoordinates.longitude} to ${customerCoordinates.latitude}, ${customerCoordinates.longitude}`);
+
+    console.log('Using API Key:', OPEN_ROUTE_SERVICE_API_KEY);
+
+    const distanceResponse = await axios.get(`https://api.openrouteservice.org/v2/directions/driving-car`, {
+      params: {
+        start: `${sellerCoordinates.latitude},${sellerCoordinates.longitude}`,
+        end: `${customerCoordinates.latitude},${customerCoordinates.longitude}`
+      },
+      headers: {
+        'Authorization': OPEN_ROUTE_SERVICE_API_KEY
+      }
+    });
+
+    return distanceResponse.data.routes[0].summary.distance; 
+  } catch (error) {
+    if (error.response) {
+      console.error('Error details:', error.response.data);
+    } else {
+      console.error('Error calculating distance:', error);
+    }
+    throw error;
+  }
+}
+
+function getDeliveryCharge(distance) {
+  if (distance <= 5000) { 
+    return 50;  
+  } else if (distance <= 10000) {
+    return 100;  
+  } else {
+    return 150;  
+  }
+}
+
+app.post('/calculate-distance', async (req, res) => {
+  const { sellerAddresses, deliveryAddress } = req.body;
+
+  if (!sellerAddresses || !deliveryAddress) {
+    return res.status(400).json({ error: 'Seller and delivery addresses are required' });
+  }
+
+  try {
+    let totalDeliveryCharge = 0;
+
+    for (const sellerAddress of sellerAddresses) {
+      const distance = await calculateDistance(sellerAddress, deliveryAddress);
+      console.log(`Distance from ${sellerAddress} to ${deliveryAddress}: ${distance} meters`);
+      totalDeliveryCharge += getDeliveryCharge(distance);
+    }
+
+    return res.json({ totalDeliveryCharge });
+  } catch (error) {
+  //  console.error('Error calculating distance:', error);
+    console.error('Error calculating distance.');
+    return res.status(500).json({ error: 'Error calculating distance' });
+  }
+});
+
+app.get('/geocode', async (req, res) => {
+  const { address } = req.query; 
+
+  if (!address) {
+    return res.status(400).json({ error: 'Address is required' });
+  }
+
+  try {
+    const response = await axios.get(`https://api.openrouteservice.org/geocode/search`, {
+      headers: {
+        'Authorization': OPEN_ROUTE_SERVICE_API_KEY,
+      },
+      params: {
+        text: address,
+        country: 'IN',
+      },
+    });
+
+    const data = response.data;
+    if (data.features && data.features.length > 0) {
+      const { coordinates } = data.features[0].geometry;
+      return res.json({ longitude: coordinates[0], latitude: coordinates[1] });
+    } else {
+      return res.status(404).json({ error: 'No geocoding results found' });
+    }
+  } catch (error) {
+    console.error('Error geocoding address:', error);
+    return res.status(500).json({ error: 'Error geocoding address' });
+  }
+});
+
+app.post('/checkout', isAuthenticatedCustomer, async (req, res) => {
   const customerId = req.session.customerId;  
   const customerName = req.session.customerName;
-  const cartItems = req.session.cart ? req.session.cart : [];
+  const cartItems = req.session.cart || [];
 
   if (cartItems.length === 0) {
     return res.redirect('/cart');
   }
 
-  db.query('SELECT address FROM customers WHERE id = $1', [customerId], (err, result) => {
-    if (err) {
-      console.error('Error fetching customer address:', err);
-      return res.redirect('/cart');
-    }
-
+  try {
+    const result = await db.query('SELECT address FROM customers WHERE id = $1', [customerId]);
     const customerLocation = result.rows[0].address || 'Not specified';
 
     res.render('customer/orderCart', {
@@ -562,38 +697,230 @@ app.post('/checkout', isAuthenticatedCustomer, (req, res) => {
       customerName,
       customerLocation 
     });
-  });
-});
-
-
-app.get('/payment-confirmation', (req, res) => {
- // const cartCount=0;
- // const cartItems=[];
-  const customerName = req.session.customerName;
-  res.render('customer/payment-confirmation', { customerName:customerName });//,cartCount:cartCount });
-});
-
-app.post('/create-order', async (req, res) => {
-  const { amount } = req.body;
-  try {
-    const order = await razorpay.orders.create({
-      amount: amount,
-      currency: "INR",
-      payment_capture: 1
-    });
-    res.json({
-      id: order.id,
-      amount: order.amount
-    });
-  } catch (error) {
-    console.error('Error creating order:', error);
-    res.status(500).json({ error: 'Internal Server Error' });
+  } catch (err) {
+    console.error('Error fetching customer address:', err);
+    return res.redirect('/cart');
   }
 });
 
-app.get('/customer/orders', (req, res) => {
-   const customerName = req.session.customerName;
-   res.render('customer/orders', { customerName:customerName });
+app.post('/payment-confirmation', async (req, res) => {
+  const { paymentId, orderId } = req.body;
+  
+  // Retrieve values from session
+  const customerId = req.session.customerId;
+  const sellerId = req.session.sellerId;
+  const mealName = req.session.mealName;
+  const orderAmount = req.session.orderAmount;
+  const deliveryAddress = req.session.deliveryAddress;
+  const orderDate = new Date(); // Use current date
+  const orderStatus = 'Delivered'; // Default status
+
+  // Check if required values are available
+  if (!customerId || !sellerId || !mealName || !orderAmount || !deliveryAddress) {
+    console.error('Missing required values:', { customerId, sellerId, mealName, orderAmount, deliveryAddress });
+    return res.status(400).json({ error: 'Missing required values to save order' });
+  }
+
+  const query = `
+    INSERT INTO order_history (customer_id, seller_id, meal_name, order_amount, order_status, order_date, delivery_address)
+    VALUES ($1, $2, $3, $4, $5, $6, $7)
+    RETURNING id;
+  `;
+  
+  const values = [customerId, sellerId, mealName, orderAmount, orderStatus, orderDate, deliveryAddress];
+  
+  try {
+    // Execute the query and insert the order into the order_history table
+    const result = await db.query(query, values);
+    console.log('Order saved successfully:', result.rows[0]);
+    
+    res.redirect('/payment-confirmation');
+  } catch (err) {
+    console.error('Error processing payment confirmation:', err);
+    res.status(500).json({ error: 'Error processing payment confirmation' });
+  }
+});
+
+app.get('/payment-confirmation', (req, res) => {
+  const customerName = req.session.customerName;
+  res.render('customer/payment-confirmation', { customerName });
+});
+
+app.post('/save-delivery-address', isAuthenticatedCustomer, (req, res) => {
+  const { address } = req.body;
+
+  if (!address) {
+    return res.status(400).json({ error: 'No delivery address provided' });
+  }
+
+  // Store delivery address in the session
+  req.session.deliveryAddress = address;
+
+  // Here you could also create a Razorpay order (if you want to generate an order_id now)
+  const orderId = "GENERATED_RAZORPAY_ORDER_ID"; // Call Razorpay API to create order
+
+  res.json({ orderId }); // Send the orderId to the frontend
+});
+
+app.get('/payment-confirmations', isAuthenticatedCustomer, (req, res) => {
+  const customerName = req.session.customerName;
+  res.render('customer/payment-confirmations', { customerName });
+});
+
+app.post('/payment-confirmations', async (req, res) => {
+  const { paymentId, orderId } = req.body;
+  const { customerId, deliveryAddress, cart, orderAmount } = req.session;
+  const orderDate = new Date(); // Current date
+  const orderStatus = 'Delivered'; // Default status
+
+  if (!customerId || !cart || cart.length === 0 || !deliveryAddress) {
+    return res.status(400).json({ error: 'Missing required values' });
+  }
+
+  try {
+    // Insert each meal in the cart into order_history
+    for (const meal of cart) {
+      const query = `
+        INSERT INTO order_history (customer_id, seller_id, meal_name, order_amount, order_status, order_date, delivery_address)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        RETURNING id;
+      `;
+
+      const values = [
+        customerId,
+        meal.seller_id, // Ensure seller_id is passed
+        meal.name,
+        meal.price,
+        orderStatus,
+        orderDate,
+        deliveryAddress
+      ];
+
+      await db.query(query, values); // Insert meal into order_history
+    }
+
+    // Clear cart after successful order placement
+    req.session.cart = [];
+
+    console.log('Order placed successfully');
+    res.redirect('/payment-confirmation');
+  } catch (err) {
+    console.error('Error processing payment confirmation:', err);
+    res.status(500).json({ error: 'Error processing payment confirmation' });
+  }
+});
+
+app.post('/create-orders', (req, res) => {
+  const { address } = req.body;
+
+  // Check if cart exists
+  if (!req.session.cart || req.session.cart.length === 0) {
+    return res.status(400).json({ error: 'Cart is empty' });
+  }
+
+  // Store the necessary details in session
+  req.session.deliveryAddress = address;
+
+  const totalAmount = req.session.cart.reduce((sum, item) => sum + item.price, 0);
+  req.session.orderAmount = totalAmount;
+
+  console.log('Session data before Razorpay order creation:', {
+    customerId: req.session.customerId,
+    cart: req.session.cart,
+    orderAmount: req.session.orderAmount,
+    deliveryAddress: req.session.deliveryAddress
+  });
+
+  const options = {
+    amount: totalAmount * 100, // amount in paise
+    currency: "INR",
+    receipt: "receipt_order_74394",
+    payment_capture: 1
+  };
+
+  razorpay.orders.create(options, function (err, order) {
+    if (err) {
+      console.error('Error creating Razorpay order:', err);
+      return res.status(500).json({ error: 'Error creating Razorpay order' });
+    }
+    res.json(order); // Send the order details to frontend
+  });
+});
+
+app.post('/create-order', (req, res) => {
+  const { amount, address, mealName, sellerId } = req.body;
+
+  // Validate required fields
+  if (!amount || !address || !mealName || !sellerId) {
+    return res.status(400).json({ error: 'Amount, address, mealName, and sellerId are required' });
+  }
+
+  // Store necessary order details in the session
+  req.session.orderAmount = amount;
+  req.session.deliveryAddress = address;
+  req.session.mealName = mealName;  // Use mealName from request body
+  req.session.sellerId = sellerId;
+  req.session.customerId = req.session.customerId || loggedInCustomerId; // Assuming loggedInCustomerId is set somewhere
+
+  // Log the session data for debugging
+  console.log('Session data after setting:', {
+    customerId: req.session.customerId,
+    sellerId: req.session.sellerId,
+    mealName: req.session.mealName,
+    orderAmount: req.session.orderAmount,
+    deliveryAddress: req.session.deliveryAddress
+  });
+
+  // Proceed with creating Razorpay order
+  const options = {
+    amount: amount * 100, // amount in paise
+    currency: "INR",
+    receipt: "receipt_order_74394",
+    payment_capture: 1
+  };
+
+  razorpay.orders.create(options, function(err, order) {
+    if (err) {
+      console.error('Error creating order:', err);
+      return res.status(500).json({ error: 'Error creating order' });
+    }
+    res.json(order); // Send back the order details to the frontend
+  });
+});
+
+app.get('/customer/orders', async (req, res) => {
+  const customerId = req.session.customerId; 
+  const customerName = req.session.customerName; 
+
+  if (!customerId) {
+    return res.status(401).send('Unauthorized: Please log in to view your orders.');
+  }
+
+  try {
+    const query = `
+      SELECT 
+        oh.id, 
+        oh.meal_name, 
+        oh.order_amount, 
+        oh.order_status, 
+        oh.order_date, 
+        s.name AS seller_name 
+      FROM 
+        order_history oh
+      JOIN 
+        sellers s ON oh.seller_id = s.id 
+      WHERE 
+        oh.customer_id = $1 
+      ORDER BY 
+        oh.order_date DESC;
+    `;
+    const values = [customerId];
+    const result = await db.query(query, values);
+    res.render('customer/orders', { customerName, orders: result.rows });
+  } catch (err) {
+    console.error('Error fetching orders:', err);
+    res.status(500).send('Error fetching orders.');
+  }
 });
 
 app.get('/get-branch-name/:ifsc', async (req, res) => {

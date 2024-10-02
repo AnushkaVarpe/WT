@@ -6,7 +6,7 @@
   <div class="meal-container">
     <% if (cartItems.length > 0) { %>
       <% cartItems.forEach(item => { %>
-        <div class="meal-card">
+        <div class="meal-card" data-seller-id="<%= item.seller_id %>">
           <div class="meal-content">
             <h2 class="meal-name"><%= item.name %></h2>
             <p><strong>Price:</strong> ₹<span class="meal-price"><%= item.price %></span></p>
@@ -46,66 +46,60 @@
 
   <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
   <script>
-    // Pay button click event
-    document.getElementById('pay-button').onclick = function (e) {
-      e.preventDefault();
 
-      const useCurrentLocation = document.getElementById('use-current-location').checked;
-      const newAddress = document.getElementById('delivery-address').value.trim();
+document.getElementById('pay-button').onclick = async function (e) {
+  e.preventDefault();
 
-      if (!useCurrentLocation && !newAddress) {
-        document.getElementById('location-error').style.display = 'block';
-        return;
-      }
+  const totalAmount = await calculateTotalAmount() * 100; // Total in paise
+  const deliveryAddress = document.getElementById('use-current-location').checked ? "<%= customerLocation %>" : document.getElementById('delivery-address').value;
 
-      const totalAmount = calculateTotalAmount() * 100;  
-      const deliveryAddress = useCurrentLocation ? "<%= customerLocation %>" : newAddress;
+  if (!deliveryAddress) {
+    alert('Please select or enter a delivery location.');
+    return;
+  }
 
-      fetch('/create-order', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          amount: totalAmount,  
-          address: deliveryAddress  
-        })
-      })
-      .then(response => response.json())
-      .then(data => {
-        var options = {
-          "key": "<%= process.env.RAZORPAY_KEY_ID %>", 
-          "amount": data.amount,  
-          "currency": "INR",
-          "name": "Your Company",
-          "description": "Meal Order",
-          "order_id": data.id, 
-          "handler": function (response) {
-            fetch('/payment-confirmation', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify({
-                paymentId: response.razorpay_payment_id,
-                orderId: response.razorpay_order_id
-              })
-            })
-            .then(() => window.location.href = '/payment-confirmation');
+  const mealCards = document.querySelectorAll('.meal-card');
+  const meals = Array.from(mealCards).map(card => ({
+    name: card.querySelector('.meal-name').innerText,
+    price: parseFloat(card.querySelector('.meal-price').innerText.replace('₹', '').trim()),
+    sellerId: card.getAttribute('data-seller-id')
+  }));
+
+  fetch('/create-orders', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      meals: meals,
+      address: deliveryAddress
+    })
+  })
+  .then(response => response.json())
+  .then(data => {
+    const options = {
+      "key": "<%= process.env.RAZORPAY_KEY_ID %>",
+      "amount": data.amount,
+      "order_id": data.id,
+      "handler": function (response) {
+        fetch('/payment-confirmations', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
           },
-          "prefill": {
-            "name": "<%= customerName %>",
-            "email": "customer@example.com",
-            "contact": "9999999999"
-          }
-        };
-        var rzp1 = new Razorpay(options);
-        rzp1.open();
-      })
-      .catch(error => console.error('Error:', error));
-    }
-
-    // Calculate total amount
+          body: JSON.stringify({
+            paymentId: response.razorpay_payment_id,
+            orderId: response.razorpay_order_id
+          })
+        })
+        .then(() => window.location.href = '/payment-confirmations');
+      }
+    };
+    const rzp1 = new Razorpay(options);
+    rzp1.open();
+  })
+  .catch(error => console.error('Error:', error));
+};
     function calculateTotalAmount() {
       let total = 0;
       document.querySelectorAll('.meal-price').forEach(function (priceElement) {
@@ -115,7 +109,6 @@
       return total;
     }
 
-    // Toggle address input visibility and validate form
     function toggleAddressInput() {
       const useCurrentLocation = document.getElementById('use-current-location');
       const newAddressContainer = document.getElementById('new-address-container');
@@ -131,7 +124,6 @@
       }
     }
 
-    // Validate address input
     function validateLocation() {
       const newAddress = document.getElementById('delivery-address').value.trim();
       const payButton = document.getElementById('pay-button');
@@ -144,13 +136,9 @@
         payButton.disabled = true;
       }
     }
-
-    // Add event listener to address input field
     document.getElementById('delivery-address').addEventListener('input', validateLocation);
-
-    // Initialize validation on page load
     toggleAddressInput();
   </script>
 </body>
 
-<%- include('../partials/footer') %>
+<%- include('../partials/footer') %> 

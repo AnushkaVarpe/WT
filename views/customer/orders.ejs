@@ -1,4 +1,26 @@
 <%- include('../partials/customerHeader', { customerName: customerName }) %>
 
+<header>
+  <h1>Hello, <%= customerName %>! Here are your orders</h1>
+</header>
+
+<% if (orders.length > 0) { %>
+  <div class="meal-container">
+    <% orders.forEach(order => { %>
+      <div class="meal-card"> <!-- Changed from meal-content to meal-card -->
+        <div class="meal-content">
+          <h2 class="meal-name"><%= order.meal_name %></h2> <!-- Using class "meal-name" -->
+          <p><strong>Seller:</strong> <%= order.seller_name %></p> <!-- Seller name -->
+          <p><strong>Order Date:</strong> <%= new Date(order.order_date).toLocaleDateString() %></p> <!-- Order Date -->
+          <p><strong>Order Time:</strong> <%= new Date(order.order_date).toLocaleTimeString() %></p> <!-- Order Time -->
+          <p><strong>Price:</strong> ₹<%= (order.order_amount / 100).toFixed(2) %></p> <!-- Price -->
+          <p><strong>Status:</strong> <%= order.order_status.charAt(0).toUpperCase() + order.order_status.slice(1) %></p> <!-- Order Status -->
+        </div>
+      </div>
+    <% }) %>
+  </div>
+<% } else { %>
+  <p>No orders found.</p>
+<% } %>
 
 <%- include('../partials/footer') %>
