@@ -42,7 +42,7 @@
           <p>Or enter a new delivery address:</p>
           <input type="text" class="form-control" id="delivery-address" placeholder="Enter your delivery address">
         </div>
-        </div>
+      </div>
     
       <div class="text-center"> 
         <button id="pay-button" class="btn btn-primary" style="margin-top: 20px;" disabled>Pay</button>
@@ -55,11 +55,11 @@
 
   <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
   <script>
-
+    
 document.getElementById('pay-button').onclick = async function (e) {
   e.preventDefault();
 
-  const totalAmount = await calculateTotalAmount() * 100; // Total in paise
+  const totalAmount = Math.round(await calculateTotalAmount() * 100); // Total in paise
   const deliveryAddress = document.getElementById('use-current-location').checked ? "<%= customerLocation %>" : document.getElementById('delivery-address').value;
 
   if (!deliveryAddress) {
@@ -81,14 +81,21 @@ document.getElementById('pay-button').onclick = async function (e) {
     },
     body: JSON.stringify({
       meals: meals,
-      address: deliveryAddress
+      address: deliveryAddress,
+      totalAmount: totalAmount // Pass the correct total amount
     })
   })
   .then(response => response.json())
   .then(data => {
+    if (data.error) {
+      console.error('Error creating Razorpay order:', data.error);
+      alert('Error: ' + data.error.description);
+      return;
+    }
+    
     const options = {
       "key": "<%= process.env.RAZORPAY_KEY_ID %>",
-      "amount": data.amount,
+      "amount": data.amount, // Amount in paise
       "order_id": data.id,
       "handler": function (response) {
         fetch('/payment-confirmations', {
@@ -109,14 +116,16 @@ document.getElementById('pay-button').onclick = async function (e) {
   })
   .catch(error => console.error('Error:', error));
 };
-    function calculateTotalAmount() {
-      let total = 0;
-      document.querySelectorAll('.meal-price').forEach(function (priceElement) {
-        const price = parseFloat(priceElement.innerText.replace('₹', '').trim());
-        total += price;
-      });
-      return total;
-    }
+function calculateTotalAmount() {
+  let total = 0;
+  document.querySelectorAll('.meal-price').forEach(function (priceElement) {
+    const price = parseFloat(priceElement.innerText.replace('₹', '').trim());
+    total += price;
+  });
+  
+  return total; // This will return the total amount in rupees
+}
+
 
     function toggleAddressInput() {
       const useCurrentLocation = document.getElementById('use-current-location');

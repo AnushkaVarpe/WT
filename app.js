@@ -849,7 +849,7 @@ app.post('/payment-confirmations', async (req, res) => {
 });
 
 app.post('/create-orders', (req, res) => {
-  const { address } = req.body;
+  const { address, totalAmount } = req.body;
 
   // Check if cart exists
   if (!req.session.cart || req.session.cart.length === 0) {
@@ -859,18 +859,21 @@ app.post('/create-orders', (req, res) => {
   // Store the necessary details in session
   req.session.deliveryAddress = address;
 
-  const totalAmount = req.session.cart.reduce((sum, item) => sum + item.price, 0);
-  req.session.orderAmount = totalAmount;
+  // Check if totalAmount is passed correctly
+  if (!totalAmount || isNaN(totalAmount)) {
+    return res.status(400).json({ error: 'Invalid total amount' });
+  }
 
+  // Log session data for debugging
   console.log('Session data before Razorpay order creation:', {
     customerId: req.session.customerId,
     cart: req.session.cart,
-    orderAmount: req.session.orderAmount,
+    totalAmount,
     deliveryAddress: req.session.deliveryAddress
   });
 
   const options = {
-    amount: totalAmount * 100, // amount in paise
+    amount: totalAmount, // amount in paise (already multiplied by 100)
     currency: "INR",
     receipt: "receipt_order_74394",
     payment_capture: 1
@@ -886,32 +889,15 @@ app.post('/create-orders', (req, res) => {
 });
 
 app.post('/create-order', (req, res) => {
-  const { amount, address, mealName, sellerId } = req.body;
+  const { amount, address, cart } = req.body;
 
   // Validate required fields
-  if (!amount || !address || !mealName || !sellerId) {
-    return res.status(400).json({ error: 'Amount, address, mealName, and sellerId are required' });
+  if (!amount || !address || !cart) {
+    return res.status(400).json({ error: 'Amount, address, and cart are required' });
   }
 
-  // Store necessary order details in the session
-  req.session.orderAmount = amount;
-  req.session.deliveryAddress = address;
-  req.session.mealName = mealName;  // Use mealName from request body
-  req.session.sellerId = sellerId;
-  req.session.customerId = req.session.customerId || loggedInCustomerId; // Assuming loggedInCustomerId is set somewhere
-
-  // Log the session data for debugging
-  console.log('Session data after setting:', {
-    customerId: req.session.customerId,
-    sellerId: req.session.sellerId,
-    mealName: req.session.mealName,
-    orderAmount: req.session.orderAmount,
-    deliveryAddress: req.session.deliveryAddress
-  });
-
-  // Proceed with creating Razorpay order
   const options = {
-    amount: amount * 100, // amount in paise
+    amount: amount, // Already in paise
     currency: "INR",
     receipt: "receipt_order_74394",
     payment_capture: 1
@@ -922,9 +908,10 @@ app.post('/create-order', (req, res) => {
       console.error('Error creating order:', err);
       return res.status(500).json({ error: 'Error creating order' });
     }
-    res.json(order); // Send back the order details to the frontend
+    res.json(order); // Send the order details to the frontend
   });
 });
+
 
 app.get('/customer/orders', async (req, res) => {
   const customerId = req.session.customerId; 
