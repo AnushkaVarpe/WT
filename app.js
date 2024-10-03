@@ -2,13 +2,26 @@ import express from 'express';
 import bodyParser from 'body-parser';
 import session from 'express-session';
 import bcrypt from 'bcrypt';
-import db from './config/db.js';
 import dotenv from 'dotenv';
 import multer from 'multer';
 import path from 'path';
 import Razorpay from 'razorpay';
 import axios from 'axios';
+import pg from 'pg';
+
 dotenv.config();          
+const db = new pg.Client({
+  user: process.env.DB_USER,
+  host: process.env.DB_HOST,
+  database: process.env.DB_NAME,
+  password: process.env.DB_PASSWORD,
+  port: process.env.DB_PORT,
+});
+
+db.connect()
+  .then(() => console.log('Connected to database'))
+  .catch(err => console.error('Connection error', err.stack));
+
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     cb(null, './public/uploads');
@@ -51,7 +64,7 @@ app.use((req, res, next) => {
 });
 
 app.get('/', (req, res) => {
-  res.redirect('/seller/login');
+  res.render('home');
 });
 
 app.get('/customer/login', (req, res) => {
@@ -767,42 +780,67 @@ app.get('/payment-confirmations', isAuthenticatedCustomer, (req, res) => {
   res.render('customer/payment-confirmations', { customerName });
 });
 
+async function transferFundsToSeller(accountNumber, ifscCode, amount) {
+  const options = {
+    bank_account: {
+      account_number: accountNumber,
+      ifsc_code: ifscCode
+    },
+    amount: amount * 100, 
+    currency: 'INR',
+  };
+
+  try {
+    const response = await razorpay.payouts.create(options);
+    console.log('Payout successful:', response);
+  } catch (error) {
+    console.error('Error during payout:', error);
+    throw error; 
+  }
+}
+
 app.post('/payment-confirmations', async (req, res) => {
   const { paymentId, orderId } = req.body;
-  const { customerId, deliveryAddress, cart, orderAmount } = req.session;
-  const orderDate = new Date(); // Current date
-  const orderStatus = 'Delivered'; // Default status
+  const { customerId, deliveryAddress, cart } = req.session;
+  const orderDate = new Date(); 
+  const orderStatus = 'Delivered'; 
 
   if (!customerId || !cart || cart.length === 0 || !deliveryAddress) {
     return res.status(400).json({ error: 'Missing required values' });
   }
 
   try {
-    // Insert each meal in the cart into order_history
     for (const meal of cart) {
       const query = `
         INSERT INTO order_history (customer_id, seller_id, meal_name, order_amount, order_status, order_date, delivery_address)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
-        RETURNING id;
+        VALUES ($1, $2, $3, $4, $5, $6, $7);
       `;
-
       const values = [
         customerId,
-        meal.seller_id, // Ensure seller_id is passed
+        meal.seller_id,
         meal.name,
         meal.price,
         orderStatus,
         orderDate,
         deliveryAddress
       ];
+      await db.query(query, values); 
+    }
+    for (const [sellerId, amount] of Object.entries(req.session.sellerAmounts)) {
+      const bankDetailsQuery = 'SELECT * FROM bank_details WHERE seller_id = $1';
+      const bankDetailsResult = await db.query(bankDetailsQuery, [sellerId]);
 
-      await db.query(query, values); // Insert meal into order_history
+      if (bankDetailsResult.rows.length > 0) {
+        const { bank_name, account_number, ifsc_code } = bankDetailsResult.rows[0];
+
+        await transferFundsToSeller(account_number, ifsc_code, amount); 
+      }
     }
 
-    // Clear cart after successful order placement
     req.session.cart = [];
+    req.session.sellerAmounts = {}; 
 
-    console.log('Order placed successfully');
+    console.log('Order placed and payments distributed successfully');
     res.redirect('/payment-confirmation');
   } catch (err) {
     console.error('Error processing payment confirmation:', err);
