@@ -33,7 +33,7 @@
                   data-mealimage="<%= meal.image_url %>">
                   Add to Cart
                 </button>
-                <a href="/order/<%= meal.id %>" class="btn btn-primary">Order Now</a>
+                <a href="/order/<%= meal.id %>" class="btn btn-primary" style="color:white !important;">Order Now</a>
                 </div>
               </div>
             </div>
@@ -41,6 +41,9 @@
         </div>
       <% }) %>
     </div>
+  </div>
+  <div>
+    <a style="margin: 120px;" href="/monthly/<%= seller.id %>">Get 10% discount on monthly mess. Book Now</a>
   </div>
 </body>
 <%- include('../partials/footer') %>

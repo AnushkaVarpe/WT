@@ -72,7 +72,8 @@ app.get('/customer/login', (req, res) => {
 });
 
 app.get('/register/customer', (req, res) => {
-  res.render('customer/customerRegister', { message: '' });
+  const referral = req.query.ref || ''; // Get the referral id if available
+  res.render('customer/customerRegister', { message: '', referral: referral });
 });
 
 app.get('/seller/login', (req, res) => {
@@ -156,37 +157,68 @@ const isAuthenticatedCustomer = (req, res, next) => {
 };
 
 app.post('/register/customer', async (req, res) => {
-  const { name, address, email, password, confirmpassword } = req.body;
+  const { name, address, email, password, confirmpassword, referral } = req.body;
 
   if (password !== confirmpassword) {
-    return res.render('customer/customerRegister', { message: 'Passwords do not match.' });
+    return res.render('customer/customerRegister', { message: 'Passwords do not match.', referral: referral });
   }
 
   try {
     const hashedPassword = await bcrypt.hash(password, saltRounds);
 
+    // Check if the email already exists
     db.query('SELECT * FROM customers WHERE email = $1', [email], (err, result) => {
       if (err) {
         console.error('Error during registration:', err);
-        return res.render('customer/customerRegister', { message: 'Error during registration. Please try again.' });
+        return res.render('customer/customerRegister', { message: 'Error during registration. Please try again.', referral: referral });
       } else if (result.rows.length > 0) {
-        return res.render('customer/customerRegister', { message: 'User already exists. Please try a different one.' });
+        return res.render('customer/customerRegister', { message: 'User already exists. Please try a different one.', referral: referral });
       } else {
-        db.query('INSERT INTO customers (name, address, email, password) VALUES ($1, $2, $3, $4)', [name, address, email, hashedPassword], (err) => {
-          if (err) {
-            console.error('Error registering:', err);
-            return res.render('customer/customerRegister', { message: 'Error during registration. Please try again.' });
-          } else {
-            res.redirect('/customer/login');
+        const isReferral = referral ? true : false;
+        const referrerId = referral || null; // If referral is present, set referrerId; otherwise, null
+        console.log(referrerId);
+        db.query(
+          'INSERT INTO customers (name, address, email, password, is_referral, referrer_id) VALUES ($1, $2, $3, $4, $5, $6)',
+          [name, address, email, hashedPassword, isReferral, referrerId],
+          (err, result) => {
+            if (err) {
+              console.error('Error registering customer:', err);
+              return res.render('customer/customerRegister', { message: 'Error during registration. Please try again.', referral: referral });
+            } else {
+              if (referrerId) {
+                db.query('SELECT * FROM customers WHERE id = $1', [referrerId], async (err, referrerResult) => {
+                  if (err) {
+                    console.error('Error fetching referrer:', err);
+                    return res.render('customer/customerRegister', { message: 'Error processing referral. Please try again.', referral: referral });
+                  } else if (referrerResult.rows.length > 0) {
+                    const couponCode = generateCouponCode(6); // A function to generate a 6-character coupon
+
+                    db.query(
+                      'UPDATE customers SET coupon = $1 WHERE id = $2',
+                      [couponCode, referrerId],
+                      (err) => {
+                        if (err) {
+                          console.error('Error updating referrer with coupon:', err);
+                        } else {
+                          console.log(`Coupon generated and stored for the referrer: ${couponCode}`);
+                        }
+                      }
+                    );
+                  }
+                });
+              }
+              res.redirect('/customer/login');
+            }
           }
-        });
+        );
       }
     });
   } catch (error) {
-    console.error('Error hashing password:', error);
-    res.render('customer/customerRegister', { message: 'Error during registration. Please try again.' });
+    console.error('Error during registration:', error);
+    res.render('customer/customerRegister', { message: 'Error during registration. Please try again.', referral: referral });
   }
 });
+
 
 app.post('/customer/login', async (req, res) => {
   const { email, password } = req.body;
@@ -210,6 +242,23 @@ app.post('/customer/login', async (req, res) => {
       res.render('customer/customerLogin', { message: 'User does not exist. Please register.' });
     }
   });
+});
+
+app.get('/customer/refer', isAuthenticatedCustomer, async (req, res) => {
+  try {
+    const customerId = req.session.customerId;
+    
+    // Generate a referral link with the customer's ID
+    const referralLink = `${req.protocol}://${req.get('host')}/register/customer?ref=${customerId}`;
+
+    res.render('customer/refer', {
+      customerName: req.session.customerName,
+      referralLink: referralLink,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).send('Server Error');
+  }
 });
 
 app.post('/register/seller', async (req, res) => {
@@ -335,18 +384,19 @@ app.get('/add-meal', isAuthenticatedSeller, (req, res) => {
 });
 
 app.post('/add-meal', isAuthenticatedSeller, upload.single('meal_image'), (req, res) => {
-  const { name, price, contents, prep_time } = req.body;
+  const { name, price, contents, prep_time, isMonthly } = req.body; // Add isMonthly here
   const sellerId = req.session.sellerId;
   const sellerName = req.session.sellerName;
 
-  const mealImage = req.file ? `/uploads/` +req.file.filename : null;
+  const mealImage = req.file ? `/uploads/` + req.file.filename : null;
 
   if (!mealImage) {
     return res.render('seller/sellerHome', { sellerName, message: 'Meal image is required.' });
   }
 
-  db.query('INSERT INTO meals (seller_id, seller_name, name, price, contents, prep_time, image_url) VALUES ($1, $2, $3, $4, $5, $6, $7)', 
-    [sellerId, sellerName, name, price, contents, prep_time, mealImage], (err) => {
+  db.query('INSERT INTO meals (seller_id, seller_name, name, price, contents, prep_time, image_url, isMonthly) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)', 
+    [sellerId, sellerName, name, price, contents, prep_time, mealImage, isMonthly], // Include isMonthly
+    (err) => {
     if (err) {
       console.error('Error adding meal:', err);
       return res.render('seller/sellerHome', { message: 'Error adding meal. Please try again.', sellerName });
@@ -540,7 +590,7 @@ app.get('/order/:mealId', isAuthenticatedCustomer, async (req, res) => {
 
   try {
     const mealQuery = `
-      SELECT m.*, s.address AS seller_address, s.name AS seller_name 
+      SELECT m.*, s.id AS seller_id, s.address AS seller_address, s.name AS seller_name 
       FROM meals m 
       JOIN sellers s ON m.seller_id = s.id 
       WHERE m.id = $1
@@ -558,6 +608,11 @@ app.get('/order/:mealId', isAuthenticatedCustomer, async (req, res) => {
 
     const meal = mealResult.rows[0];
     const customerLocation = customerResult.rows[0].address || 'Not specified';
+
+    req.session.sellerId = meal.seller_id; 
+    req.session.mealName = meal.name;      
+    req.session.orderAmount = meal.price; 
+    req.session.deliveryAddress = customerLocation; 
 
     res.render('customer/ordernow', {
       customerName: req.session.customerName,
@@ -716,63 +771,9 @@ app.post('/checkout', isAuthenticatedCustomer, async (req, res) => {
   }
 });
 
-app.post('/payment-confirmation', async (req, res) => {
-  const { paymentId, orderId } = req.body;
-  
-  // Retrieve values from session
-  const customerId = req.session.customerId;
-  const sellerId = req.session.sellerId;
-  const mealName = req.session.mealName;
-  const orderAmount = req.session.orderAmount;
-  const deliveryAddress = req.session.deliveryAddress;
-  const orderDate = new Date(); // Use current date
-  const orderStatus = 'Delivered'; // Default status
-
-  // Check if required values are available
-  if (!customerId || !sellerId || !mealName || !orderAmount || !deliveryAddress) {
-    console.error('Missing required values:', { customerId, sellerId, mealName, orderAmount, deliveryAddress });
-    return res.status(400).json({ error: 'Missing required values to save order' });
-  }
-
-  const query = `
-    INSERT INTO order_history (customer_id, seller_id, meal_name, order_amount, order_status, order_date, delivery_address)
-    VALUES ($1, $2, $3, $4, $5, $6, $7)
-    RETURNING id;
-  `;
-  
-  const values = [customerId, sellerId, mealName, orderAmount, orderStatus, orderDate, deliveryAddress];
-  
-  try {
-    // Execute the query and insert the order into the order_history table
-    const result = await db.query(query, values);
-    console.log('Order saved successfully:', result.rows[0]);
-    
-    res.redirect('/payment-confirmation');
-  } catch (err) {
-    console.error('Error processing payment confirmation:', err);
-    res.status(500).json({ error: 'Error processing payment confirmation' });
-  }
-});
-
 app.get('/payment-confirmation', (req, res) => {
   const customerName = req.session.customerName;
   res.render('customer/payment-confirmation', { customerName });
-});
-
-app.post('/save-delivery-address', isAuthenticatedCustomer, (req, res) => {
-  const { address } = req.body;
-
-  if (!address) {
-    return res.status(400).json({ error: 'No delivery address provided' });
-  }
-
-  // Store delivery address in the session
-  req.session.deliveryAddress = address;
-
-  // Here you could also create a Razorpay order (if you want to generate an order_id now)
-  const orderId = "GENERATED_RAZORPAY_ORDER_ID"; // Call Razorpay API to create order
-
-  res.json({ orderId }); // Send the orderId to the frontend
 });
 
 app.get('/payment-confirmations', isAuthenticatedCustomer, (req, res) => {
@@ -780,26 +781,16 @@ app.get('/payment-confirmations', isAuthenticatedCustomer, (req, res) => {
   res.render('customer/payment-confirmations', { customerName });
 });
 
-async function transferFundsToSeller(accountNumber, ifscCode, amount) {
-  const options = {
-    bank_account: {
-      account_number: accountNumber,
-      ifsc_code: ifscCode
-    },
-    amount: amount * 100, 
-    currency: 'INR',
-  };
-
-  try {
-    const response = await razorpay.payouts.create(options);
-    console.log('Payout successful:', response);
-  } catch (error) {
-    console.error('Error during payout:', error);
-    throw error; 
+function generateCouponCode(length = 6) {
+  const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let couponCode = '';
+  for (let i = 0; i < length; i++) {
+    couponCode += characters.charAt(Math.floor(Math.random() * characters.length));
   }
+  return couponCode;
 }
 
-app.post('/payment-confirmations', async (req, res) => {
+app.post('/payment-confirmations', async (req, res) => { 
   const { paymentId, orderId } = req.body;
   const { customerId, deliveryAddress, cart } = req.session;
   const orderDate = new Date(); 
@@ -826,6 +817,23 @@ app.post('/payment-confirmations', async (req, res) => {
       ];
       await db.query(query, values); 
     }
+    
+    const referralCheckQuery = 'SELECT referrer_id FROM customers WHERE id = $1';
+    const referralCheckResult = await db.query(referralCheckQuery, [customerId]);
+
+    if (referralCheckResult.rows.length > 0 && referralCheckResult.rows[0].referrer_id) {
+      const referrerId = referralCheckResult.rows[0].referrer_id;
+      const firstOrderCheckQuery = 'SELECT COUNT(*) AS orderCount FROM order_history WHERE customer_id = $1';
+      const firstOrderCheckResult = await db.query(firstOrderCheckQuery, [customerId]);
+
+      if (firstOrderCheckResult.rows[0].orderCount === 0) {
+        const couponCode = generateCouponCode();
+        const updateCouponQuery = 'UPDATE customers SET coupon = $1 WHERE id = $2';
+        await db.query(updateCouponQuery, [couponCode, referrerId]);
+        notifyReferrer(referrerId, couponCode);
+        console.log(`Coupon generated and stored for the referrer (Customer A): ${couponCode}`);
+      }
+    }
     for (const [sellerId, amount] of Object.entries(req.session.sellerAmounts)) {
       const bankDetailsQuery = 'SELECT * FROM bank_details WHERE seller_id = $1';
       const bankDetailsResult = await db.query(bankDetailsQuery, [sellerId]);
@@ -836,7 +844,6 @@ app.post('/payment-confirmations', async (req, res) => {
         await transferFundsToSeller(account_number, ifsc_code, amount); 
       }
     }
-
     req.session.cart = [];
     req.session.sellerAmounts = {}; 
 
@@ -848,23 +855,110 @@ app.post('/payment-confirmations', async (req, res) => {
   }
 });
 
+app.post('/payment-confirmation', async (req, res) => {
+  const { paymentId, orderId } = req.body;
+  const customerId = req.session.customerId;
+  const sellerId = req.session.sellerId;
+  const mealName = req.session.mealName;
+  const orderAmount = req.session.orderAmount;
+  const deliveryAddress = req.session.deliveryAddress;
+  const orderDate = new Date();
+  const orderStatus = 'Delivered'; 
+
+  console.log('Session values before order creation:', {
+    customerId,
+    sellerId,
+    mealName,
+    orderAmount,
+    deliveryAddress
+  });
+
+  if (!customerId || !sellerId || !mealName || !orderAmount || !deliveryAddress) {
+    console.error('Missing required values:', { customerId, sellerId, mealName, orderAmount, deliveryAddress });
+    return res.status(400).json({ error: 'Missing required values to save order' });
+  }
+
+  const query = `
+    INSERT INTO order_history (customer_id, seller_id, meal_name, order_amount, order_status, order_date, delivery_address)
+    VALUES ($1, $2, $3, $4, $5, $6, $7)
+    RETURNING id;
+  `;
+  const values = [customerId, sellerId, mealName, orderAmount, orderStatus, orderDate, deliveryAddress];
+
+  try {
+    const result = await db.query(query, values);
+    console.log('Order saved successfully:', result.rows[0]);
+    const customerQuery = `SELECT is_referral, referrer_id FROM customers WHERE id = $1`;
+    const customerValues = [customerId];
+    const customerResult = await db.query(customerQuery, customerValues);
+
+    if (customerResult.rows.length > 0) {
+      const customer = customerResult.rows[0];
+      if (customer.is_referral) {
+        const referrerId = customer.referrer_id;
+
+        if (referrerId) {
+          const couponCode = generateCouponCode();
+          await db.query(`UPDATE customers SET coupon = $1 WHERE id = $2`, [couponCode, referrerId]);
+          notifyReferrer(referrerId, couponCode);
+          console.log('Coupon generated and stored for the referrer:', couponCode);
+        }
+      }
+    }
+
+    res.redirect('/payment-confirmation');
+  } catch (err) {
+    console.error('Error processing payment confirmation:', err);
+    res.status(500).json({ error: 'Error processing payment confirmation' });
+  }
+});
+
+
+async function notifyReferrer(referrerId, couponCode) {
+  console.log(`Notifying referrer ${referrerId} about coupon: ${couponCode}`);
+}
+
+app.post('/save-delivery-address', isAuthenticatedCustomer, (req, res) => {
+  const { address } = req.body;
+
+  if (!address) {
+    return res.status(400).json({ error: 'No delivery address provided' });
+  }
+  req.session.deliveryAddress = address;
+
+  const orderId = "GENERATED_RAZORPAY_ORDER_ID"; 
+
+  res.json({ orderId }); 
+});
+
+async function transferFundsToSeller(accountNumber, ifscCode, amount) {
+  const options = {
+    bank_account: {
+      account_number: accountNumber,
+      ifsc_code: ifscCode
+    },
+    amount: amount * 100, 
+    currency: 'INR',
+  };
+
+  try {
+    const response = await razorpay.payouts.create(options);
+    console.log('Payout successful:', response);
+  } catch (error) {
+    console.error('Error during payout:', error);
+    throw error; 
+  }
+}
+
 app.post('/create-orders', (req, res) => {
   const { address, totalAmount } = req.body;
-
-  // Check if cart exists
   if (!req.session.cart || req.session.cart.length === 0) {
     return res.status(400).json({ error: 'Cart is empty' });
   }
-
-  // Store the necessary details in session
   req.session.deliveryAddress = address;
-
-  // Check if totalAmount is passed correctly
   if (!totalAmount || isNaN(totalAmount)) {
     return res.status(400).json({ error: 'Invalid total amount' });
   }
-
-  // Log session data for debugging
   console.log('Session data before Razorpay order creation:', {
     customerId: req.session.customerId,
     cart: req.session.cart,
@@ -873,7 +967,7 @@ app.post('/create-orders', (req, res) => {
   });
 
   const options = {
-    amount: totalAmount, // amount in paise (already multiplied by 100)
+    amount: totalAmount, 
     currency: "INR",
     receipt: "receipt_order_74394",
     payment_capture: 1
@@ -884,34 +978,212 @@ app.post('/create-orders', (req, res) => {
       console.error('Error creating Razorpay order:', err);
       return res.status(500).json({ error: 'Error creating Razorpay order' });
     }
-    res.json(order); // Send the order details to frontend
+    res.json(order); 
   });
 });
 
-app.post('/create-order', (req, res) => {
+app.post('/create-order', async (req, res) => {
   const { amount, address, cart } = req.body;
 
-  // Validate required fields
-  if (!amount || !address || !cart) {
+  if (!amount || !address || !cart || cart.length === 0) {
     return res.status(400).json({ error: 'Amount, address, and cart are required' });
   }
 
+  const sellerIds = [...new Set(cart.map(item => item.sellerId))]; // Get unique seller IDs
+
+  // If there's more than one seller, handle accordingly
+  if (sellerIds.length > 1) {
+    console.error('Multiple sellers detected:', sellerIds);
+    return res.status(400).json({ error: 'Cannot process orders from multiple sellers at this time.' });
+  }
+
   const options = {
-    amount: amount, // Already in paise
+    amount: amount,
     currency: "INR",
     receipt: "receipt_order_74394",
     payment_capture: 1
   };
 
-  razorpay.orders.create(options, function(err, order) {
-    if (err) {
-      console.error('Error creating order:', err);
-      return res.status(500).json({ error: 'Error creating order' });
-    }
-    res.json(order); // Send the order details to the frontend
-  });
+  try {
+    const order = await razorpay.orders.create(options);
+    
+    // Store necessary values in the session for later use
+    req.session.customerId = req.session.customerId; // Assuming you set this on login
+    req.session.sellerId = sellerIds[0]; // Store the single sellerId
+    req.session.mealName = cart.map(item => item.mealName).join(", "); // Join meal names if multiple
+    req.session.orderAmount = cart.reduce((total, item) => total + item.orderAmount, 0); // Sum order amounts
+    req.session.deliveryAddress = address;
+
+    res.json(order); 
+  } catch (err) {
+    console.error('Error creating order:', err);
+    return res.status(500).json({ error: 'Error creating order' });
+  }
 });
 
+app.get('/monthly-payment-confirmation', (req, res) => {
+  const customerName = req.session.customerName;
+  res.render('customer/monthly-payment-confirmation', { customerName });
+});
+
+app.post('/create-monthly-order', async (req, res) => {
+  const { amount, sellerId, mealName, mealPlan, deliveryAddress } = req.body;
+  req.session.sellerId = sellerId;
+  req.session.mealName = mealName;
+  req.session.mealPlan = mealPlan;
+  req.session.deliveryAddress = deliveryAddress;
+  if (!amount) {
+    return res.status(400).json({ error: 'Amount is required.' });
+  }
+
+  try {
+    const paymentOptions = {
+      amount: amount,
+      currency: 'INR',
+      receipt: `monthly_${sellerId}`,
+      payment_capture: 1,
+    };
+
+    const payment = await razorpay.orders.create(paymentOptions);
+
+    req.session.orderAmount = amount; 
+    res.json({ id: payment.id, amount: payment.amount });
+  } catch (err) {
+    console.error('Error creating monthly order:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.post('/monthly-payment-confirmation', async (req, res) => {
+  const customerId = req.session.customerId;
+  const customerName = req.session.customerName;
+  const sellerId = req.session.sellerId;
+  const mealName = req.session.mealName;
+  const mealPlan = req.session.mealPlan;
+  const deliveryAddress = req.session.deliveryAddress;
+  let orderAmount = req.session.orderAmount; 
+  orderAmount = parseFloat(orderAmount);
+  // Ensure all required data is present
+  if (!customerId || !sellerId || !mealName || isNaN(orderAmount) || !deliveryAddress) {
+      console.error('Missing required values:', { customerId, sellerId, mealName, orderAmount, deliveryAddress });
+      return res.status(400).json({ error: 'Missing required values to save order' });
+  }
+  try {
+    const query = `
+      INSERT INTO monthly (customer_id, seller_id, customer_name, meal_name, meal_plan, delivery_address, price)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
+    `;
+    const values = [
+      customerId,
+      sellerId,
+      customerName.trim(), // Remove any extra whitespace
+      mealName,
+      mealPlan,
+      deliveryAddress,
+      orderAmount/100,
+    ];
+    const results = await db.query(query, values);
+    res.json({ success: true, orderId: results.insertId });
+} catch (err) {
+    console.error('Error processing payment confirmation:', err);
+    res.status(500).json({ error: 'Error processing payment confirmation' });
+}
+});
+
+app.get('/monthly/:sellerId', async (req, res) => { 
+  try {
+    const sellerId = req.params.sellerId;
+    const customerId = req.session.customerId; 
+    const customerName = req.session.customerName;
+
+    // Fetch seller information
+    const sellerQuery = await db.query('SELECT id, name FROM sellers WHERE id = $1', [sellerId]);
+    const seller = sellerQuery.rows[0];
+
+    // Check if the seller exists
+    if (!seller) {
+      return res.status(404).send('Seller not found');
+    }
+    const mealsQuery = await db.query('SELECT id, name, price FROM meals WHERE seller_id = $1 AND isMonthly = $2', [sellerId, 'yes']);
+
+    const meals = mealsQuery.rows;
+    console.log('Seller:', seller);
+    console.log('Meals:', meals);
+    // Render the monthly page with seller and meals
+    res.render('customer/monthly', { seller, meals, customerId, customerName });
+  } catch (err) {
+    console.error('Error fetching monthly meals:', err);
+    res.status(500).send('Server error');
+  }
+});
+
+app.post('/monthly/submit', async (req, res) => {
+  const { customerName, mealName, mealPlan, deliveryAddress } = req.body;
+
+  try {
+    const customerId = req.session.customerId;
+    const customerName = req.session.customerName;
+
+    const result = await db.query(
+      'INSERT INTO monthly (customer_id, customer_name, meal_name, meal_plan, delivery_address) VALUES ($1, $2, $3, $4, $5) RETURNING id',
+      [customerId, customerName, mealName, mealPlan, deliveryAddress]
+    );
+
+    const monthlyId = result.rows[0].id;
+
+    // Calculate total price for 30 days without discount
+    const mealPrice = await db.query('SELECT price FROM meals WHERE id = $1', [mealName]);
+    const totalMealPrice = mealPrice.rows[0].price * 30; // Price for 30 days
+
+    const paymentOptions = {
+      amount: totalMealPrice * 100, // Amount in paise
+      currency: 'INR',
+      receipt: `monthly_${monthlyId}`,
+      payment_capture: 1,
+    };
+
+    const payment = await razorpay.orders.create(paymentOptions);
+    res.json({ orderId: payment.id });
+
+  } catch (err) {
+    console.error('Error processing monthly meal plan:', err);
+    res.status(500).send('Server Error');
+  }
+});
+
+app.get('/customer/mess', isAuthenticatedCustomer, async (req, res) => {
+  try {
+      const customerId = req.session.customerId;
+      const result = await db.query(`
+        SELECT 
+            monthly.id,
+            sellers.name AS seller_name,
+            monthly.meal_plan,
+            monthly.status,
+            monthly.meal_name, 
+            monthly.price,                -- Add price
+            monthly.created_at            -- Add order date
+        FROM 
+            monthly
+        JOIN 
+            sellers 
+        ON 
+            monthly.seller_id = sellers.id
+        WHERE 
+            monthly.customer_id = $1
+    `, [customerId]);
+    
+      const monthlyMess = result.rows;
+
+      res.render('customer/mess', {
+          monthlyMess: monthlyMess,
+          customerName: req.session.customerName,
+      });
+  } catch (err) {
+      console.error(err);
+      res.status(500).send('Server Error');
+  }
+});
 
 app.get('/customer/orders', async (req, res) => {
   const customerId = req.session.customerId; 

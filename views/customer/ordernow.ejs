@@ -5,7 +5,7 @@
 <body>
   <h2>Order Review for <%= meal.name %></h2>
   <div class="meal-container container px-4 py-5">
-    <div class="meal-card col-12 col-md-4" data-seller-address="<%= meal.seller_address %>">
+    <div class="meal-card col-12 col-md-4" data-seller-id="<%= meal.seller_id %>" data-seller-address="<%= meal.seller_address %>">
       <div class="meal-content card flex-fill">
         <div class="img-box">
           <% if (meal.image_url) { %>

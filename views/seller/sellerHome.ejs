@@ -35,6 +35,19 @@
       <input type="file" class="form-control" id="meal_image" name="meal_image" accept="image/*" required>
     </div>
 
+    <!-- Monthly Meal Option -->
+    <div class="mb-3">
+      <label class="form-label">Is this a Monthly Meal Plan?</label>
+      <div class="form-check">
+        <input type="radio" id="isMonthlyYes" name="isMonthly" value="yes" class="form-check-input" required>
+        <label for="isMonthlyYes" class="form-check-label">Yes</label>
+      </div>
+      <div class="form-check">
+        <input type="radio" id="isMonthlyNo" name="isMonthly" value="no" class="form-check-input" required>
+        <label for="isMonthlyNo" class="form-check-label">No</label>
+      </div>
+    </div>
+
     <button class="btn btn-primary w-100 py-2" type="submit">Add Meal</button>
   </form>
 </div>
