@@ -4,8 +4,17 @@
 
 <body>
   <h2>Order Confirmed</h2>
-  <p style="text-align: center; font-size: larger;">Thank you for your order, <%= customerName %>!. Your meals will be delivered shortly.</p>
+  <p style="text-align: center; font-size: larger;">Thank you for your order, <%= customerName %>! Your meals will be delivered shortly.</p>
+
+  <% if (Object.keys(sellerInfo).length > 0) { %>
+    <div style="text-align: center;">
+      <h4>Seller Contact Information:</h4>
+      <% for (const sellerId in sellerInfo) { %>
+        <p>You can contact <strong><%= sellerInfo[sellerId].name %></strong> through this phone: <strong><%= sellerInfo[sellerId].phone_number %></strong></p>
+      <% } %>
+    </div>
+  <% } %>
+
   <a style="margin-left:47%; font-size: larger;" href="/customer/home">Back to Meals</a>
 </body>
-
 <%- include('../partials/footer') %>

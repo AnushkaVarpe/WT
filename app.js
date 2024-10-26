@@ -261,8 +261,7 @@ app.get('/customer/refer', isAuthenticatedCustomer, async (req, res) => {
 });
 
 app.post('/register/seller', async (req, res) => {
-  const { name, address, email, password, confirmpassword } = req.body;
-
+  const { name, address, email, password, confirmpassword, phone } = req.body;
   if (password !== confirmpassword) {
     return res.render('seller/sellerRegister', { message: 'Passwords do not match.' });
   }
@@ -277,7 +276,8 @@ app.post('/register/seller', async (req, res) => {
       } else if (result.rows.length > 0) {
         return res.render('seller/sellerRegister', { message: 'User already exists. Please try a different one.' });
       } else {
-        db.query('INSERT INTO sellers (name, address, email, password) VALUES ($1, $2, $3, $4)', [name, address, email, hashedPassword], (err) => {
+        db.query('INSERT INTO sellers (name, address, email, password, phone_number) VALUES ($1, $2, $3, $4, $5)', 
+          [name, address, email, hashedPassword, phone], (err) => {
           if (err) {
             console.error('Error registering:', err);
             return res.render('seller/sellerRegister', { message: 'Error during registration. Please try again.' });
@@ -770,30 +770,47 @@ app.post('/checkout', isAuthenticatedCustomer, async (req, res) => {
   }
 });
 
-app.get('/payment-confirmation', (req, res) => {
-  const customerName = req.session.customerName;
-  res.render('customer/payment-confirmation', { customerName });
-});
 
-app.get('/payment-confirmations', isAuthenticatedCustomer, (req, res) => {
+app.get('/payment-confirmations', isAuthenticatedCustomer, async (req, res) => {
   const customerName = req.session.customerName;
-  res.render('customer/payment-confirmations', { customerName });
-});
+  const cart = req.session.cart || [];
+  const sellerInfo = {}; // To store seller names and phone numbers
 
-function generateCouponCode(length = 6) {
-  const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  let couponCode = '';
-  for (let i = 0; i < length; i++) {
-    couponCode += characters.charAt(Math.floor(Math.random() * characters.length));
+  // Retrieve seller names and phone numbers for each meal in the cart
+  for (const meal of cart) {
+    const sellerQuery = 'SELECT name, phone_number FROM sellers WHERE id = $1';
+    const sellerResult = await db.query(sellerQuery, [meal.seller_id]);
+    if (sellerResult.rows.length > 0) {
+      sellerInfo[meal.seller_id] = sellerResult.rows[0]; // Store both name and phone number
+    }
   }
-  return couponCode;
-}
 
-app.post('/payment-confirmations', async (req, res) => { 
+  res.render('customer/payment-confirmations', { customerName, sellerInfo });
+});
+
+
+app.get('/payment-confirmations', isAuthenticatedCustomer, async (req, res) => {
+  const customerName = req.session.customerName;
+  const cart = req.session.cart || [];
+  const sellerPhoneNumbers = {};
+
+  // Retrieve seller phone numbers for each meal in the cart
+  for (const meal of cart) {
+    const sellerPhoneQuery = 'SELECT phone_number FROM sellers WHERE id = $1';
+    const sellerPhoneResult = await db.query(sellerPhoneQuery, [meal.seller_id]);
+    if (sellerPhoneResult.rows.length > 0) {
+      sellerPhoneNumbers[meal.seller_id] = sellerPhoneResult.rows[0].phone_number;
+    }
+  }
+
+  res.render('customer/payment-confirmations', { customerName, sellerPhoneNumbers });
+});
+
+app.post('/payment-confirmations', async (req, res) => {
   const { paymentId, orderId } = req.body;
   const { customerId, deliveryAddress, cart } = req.session;
-  const orderDate = new Date(); 
-  const orderStatus = 'Delivered'; 
+  const orderDate = new Date();
+  const orderStatus = 'Delivered';
 
   if (!customerId || !cart || cart.length === 0 || !deliveryAddress) {
     return res.status(400).json({ error: 'Missing required values' });
@@ -814,12 +831,12 @@ app.post('/payment-confirmations', async (req, res) => {
         orderDate,
         deliveryAddress
       ];
-      await db.query(query, values); 
+      await db.query(query, values);
     }
-    
+
+    // Existing referral logic
     const referralCheckQuery = 'SELECT referrer_id FROM customers WHERE id = $1';
     const referralCheckResult = await db.query(referralCheckQuery, [customerId]);
-
     if (referralCheckResult.rows.length > 0 && referralCheckResult.rows[0].referrer_id) {
       const referrerId = referralCheckResult.rows[0].referrer_id;
       const firstOrderCheckQuery = 'SELECT COUNT(*) AS orderCount FROM order_history WHERE customer_id = $1';
@@ -833,19 +850,19 @@ app.post('/payment-confirmations', async (req, res) => {
         console.log(`Coupon generated and stored for the referrer (Customer A): ${couponCode}`);
       }
     }
+
+    // Existing fund transfer logic
     for (const [sellerId, amount] of Object.entries(req.session.sellerAmounts)) {
       const bankDetailsQuery = 'SELECT * FROM bank_details WHERE seller_id = $1';
       const bankDetailsResult = await db.query(bankDetailsQuery, [sellerId]);
 
       if (bankDetailsResult.rows.length > 0) {
         const { bank_name, account_number, ifsc_code } = bankDetailsResult.rows[0];
-
-        await transferFundsToSeller(account_number, ifsc_code, amount); 
+        await transferFundsToSeller(account_number, ifsc_code, amount);
       }
     }
     req.session.cart = [];
-    req.session.sellerAmounts = {}; 
-
+    req.session.sellerAmounts = {};
     console.log('Order placed and payments distributed successfully');
     res.redirect('/payment-confirmation');
   } catch (err) {
@@ -853,6 +870,7 @@ app.post('/payment-confirmations', async (req, res) => {
     res.status(500).json({ error: 'Error processing payment confirmation' });
   }
 });
+
 
 app.post('/payment-confirmation', async (req, res) => {
   const { paymentId, orderId } = req.body;
@@ -862,7 +880,7 @@ app.post('/payment-confirmation', async (req, res) => {
   const orderAmount = req.session.orderAmount;
   const deliveryAddress = req.session.deliveryAddress;
   const orderDate = new Date();
-  const orderStatus = 'Delivered'; 
+  const orderStatus = 'Delivered';
 
   console.log('Session values before order creation:', {
     customerId,
@@ -887,6 +905,11 @@ app.post('/payment-confirmation', async (req, res) => {
   try {
     const result = await db.query(query, values);
     console.log('Order saved successfully:', result.rows[0]);
+
+    const sellerPhoneQuery = 'SELECT phone_number FROM sellers WHERE id = $1';
+    const sellerPhoneResult = await db.query(sellerPhoneQuery, [sellerId]);
+    const sellerPhoneNumber = sellerPhoneResult.rows.length > 0 ? sellerPhoneResult.rows[0].phone_number : null;
+
     const customerQuery = `SELECT is_referral, referrer_id FROM customers WHERE id = $1`;
     const customerValues = [customerId];
     const customerResult = await db.query(customerQuery, customerValues);
@@ -904,13 +927,21 @@ app.post('/payment-confirmation', async (req, res) => {
         }
       }
     }
-
     res.redirect('/payment-confirmation');
   } catch (err) {
     console.error('Error processing payment confirmation:', err);
     res.status(500).json({ error: 'Error processing payment confirmation' });
   }
 });
+
+function generateCouponCode(length = 6) {
+  const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let couponCode = '';
+  for (let i = 0; i < length; i++) {
+    couponCode += characters.charAt(Math.floor(Math.random() * characters.length));
+  }
+  return couponCode;
+}
 
 async function notifyReferrer(referrerId, couponCode) {
   console.log(`Notifying referrer ${referrerId} about coupon: ${couponCode}`);
