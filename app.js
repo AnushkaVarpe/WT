@@ -72,7 +72,7 @@ app.get('/customer/login', (req, res) => {
 });
 
 app.get('/register/customer', (req, res) => {
-  const referral = req.query.ref || ''; // Get the referral id if available
+  const referral = req.query.ref || ''; 
   res.render('customer/customerRegister', { message: '', referral: referral });
 });
 
@@ -218,7 +218,6 @@ app.post('/register/customer', async (req, res) => {
     res.render('customer/customerRegister', { message: 'Error during registration. Please try again.', referral: referral });
   }
 });
-
 
 app.post('/customer/login', async (req, res) => {
   const { email, password } = req.body;
@@ -913,7 +912,6 @@ app.post('/payment-confirmation', async (req, res) => {
   }
 });
 
-
 async function notifyReferrer(referrerId, couponCode) {
   console.log(`Notifying referrer ${referrerId} about coupon: ${couponCode}`);
 }
@@ -1186,8 +1184,8 @@ app.get('/customer/mess', isAuthenticatedCustomer, async (req, res) => {
 });
 
 app.get('/customer/orders', async (req, res) => {
-  const customerId = req.session.customerId; 
-  const customerName = req.session.customerName; 
+  const customerId = req.session.customerId;
+  const customerName = req.session.customerName;
 
   if (!customerId) {
     return res.status(401).send('Unauthorized: Please log in to view your orders.');
@@ -1201,11 +1199,14 @@ app.get('/customer/orders', async (req, res) => {
         oh.order_amount, 
         oh.order_status, 
         oh.order_date, 
-        s.name AS seller_name 
+        s.name AS seller_name,
+        m.prep_time AS prep_time 
       FROM 
         order_history oh
       JOIN 
         sellers s ON oh.seller_id = s.id 
+      JOIN 
+        meals m ON oh.meal_name = m.name 
       WHERE 
         oh.customer_id = $1 
       ORDER BY 
@@ -1213,12 +1214,22 @@ app.get('/customer/orders', async (req, res) => {
     `;
     const values = [customerId];
     const result = await db.query(query, values);
-    res.render('customer/orders', { customerName, orders: result.rows });
+    const orders = result.rows.map(order => {
+      const orderDate = new Date(order.order_date);
+            const [hours, minutes, seconds] = order.prep_time.split(':').map(Number);
+      const prepTimeInMinutes = hours * 60 + minutes + seconds / 60 + 15; 
+      const preparingUntil = new Date(orderDate.getTime() + prepTimeInMinutes * 60000);
+      const currentStatus = new Date() < preparingUntil ? "preparing" : "delivered";
+      return { ...order, order_status: currentStatus };
+    });
+
+    res.render('customer/orders', { customerName, orders });
   } catch (err) {
     console.error('Error fetching orders:', err);
     res.status(500).send('Error fetching orders.');
-  }
+  }  
 });
+
 
 app.get('/get-branch-name/:ifsc', async (req, res) => {
   const IFSC = req.params.ifsc;
