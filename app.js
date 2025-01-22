@@ -594,29 +594,24 @@ app.get('/order/:mealId', isAuthenticatedCustomer, async (req, res) => {
       JOIN sellers s ON m.seller_id = s.id 
       WHERE m.id = $1
     `;
-
     const mealResult = await db.query(mealQuery, [mealId]);
-    if (mealResult.rows.length === 0) {
-      return res.redirect('/customer/home');
-    }
+    if (mealResult.rows.length === 0) return res.redirect('/customer/home');
 
-    const customerResult = await db.query('SELECT address FROM customers WHERE id = $1', [customerId]);
-    if (customerResult.rows.length === 0) {
-      return res.redirect('/customer/home');
-    }
+    const customerResult = await db.query(
+      'SELECT address, coupon FROM customers WHERE id = $1',
+      [customerId]
+    );
+    if (customerResult.rows.length === 0) return res.redirect('/customer/home');
 
     const meal = mealResult.rows[0];
     const customerLocation = customerResult.rows[0].address || 'Not specified';
-
-    req.session.sellerId = meal.seller_id; 
-    req.session.mealName = meal.name;      
-    req.session.orderAmount = meal.price; 
-    req.session.deliveryAddress = customerLocation; 
+    const customerCoupon = customerResult.rows[0].coupon || null;
 
     res.render('customer/ordernow', {
       customerName: req.session.customerName,
       meal: meal,
       customerLocation: customerLocation,
+      customerCoupon: customerCoupon,
       cartCount: req.session.cart ? req.session.cart.length : 0
     });
   } catch (error) {
@@ -657,9 +652,6 @@ async function calculateDistance(sellerAddress, customerAddress) {
     const customerCoordinates = await geocodeAddress(customerAddress);
 
     console.log(`Calculating distance from ${sellerCoordinates.latitude}, ${sellerCoordinates.longitude} to ${customerCoordinates.latitude}, ${customerCoordinates.longitude}`);
-
-    console.log('Using API Key:', OPEN_ROUTE_SERVICE_API_KEY);
-
     const distanceResponse = await axios.get(`https://api.openrouteservice.org/v2/directions/driving-car`, {
       params: {
         start: `${sellerCoordinates.latitude},${sellerCoordinates.longitude}`,
@@ -673,7 +665,8 @@ async function calculateDistance(sellerAddress, customerAddress) {
     return distanceResponse.data.routes[0].summary.distance; 
   } catch (error) {
     if (error.response) {
-      console.error('Error details:', error.response.data);
+      console.error('Error');
+      //console.error('Error details:', error.response.data);
     } else {
       console.error('Error calculating distance:', error);
     }
@@ -770,40 +763,40 @@ app.post('/checkout', isAuthenticatedCustomer, async (req, res) => {
   }
 });
 
+app.get('/payment-confirmation', isAuthenticatedCustomer, async (req, res) => {
+  const customerName = req.session.customerName;
+  const sellerId = req.session.sellerId; 
+  try {
+    let sellerPhoneNumber = null;
+    if (sellerId) {
+      const sellerPhoneQuery = 'SELECT phone_number FROM sellers WHERE id = $1';
+      const sellerPhoneResult = await db.query(sellerPhoneQuery, [sellerId]);
+      sellerPhoneNumber = sellerPhoneResult.rows.length > 0 ? sellerPhoneResult.rows[0].phone_number : null;
+    }
+
+    res.render('customer/payment-confirmation', {
+      customerName,
+      sellerPhoneNumber
+    });
+  } catch (err) {
+    console.error('Error loading payment confirmation page:', err);
+    res.status(500).send('Error loading payment confirmation page');
+  }
+});
 
 app.get('/payment-confirmations', isAuthenticatedCustomer, async (req, res) => {
   const customerName = req.session.customerName;
   const cart = req.session.cart || [];
-  const sellerInfo = {}; // To store seller names and phone numbers
+  const sellerInfo = {}; 
 
-  // Retrieve seller names and phone numbers for each meal in the cart
   for (const meal of cart) {
     const sellerQuery = 'SELECT name, phone_number FROM sellers WHERE id = $1';
     const sellerResult = await db.query(sellerQuery, [meal.seller_id]);
     if (sellerResult.rows.length > 0) {
-      sellerInfo[meal.seller_id] = sellerResult.rows[0]; // Store both name and phone number
+      sellerInfo[meal.seller_id] = sellerResult.rows[0]; 
     }
   }
-
   res.render('customer/payment-confirmations', { customerName, sellerInfo });
-});
-
-
-app.get('/payment-confirmations', isAuthenticatedCustomer, async (req, res) => {
-  const customerName = req.session.customerName;
-  const cart = req.session.cart || [];
-  const sellerPhoneNumbers = {};
-
-  // Retrieve seller phone numbers for each meal in the cart
-  for (const meal of cart) {
-    const sellerPhoneQuery = 'SELECT phone_number FROM sellers WHERE id = $1';
-    const sellerPhoneResult = await db.query(sellerPhoneQuery, [meal.seller_id]);
-    if (sellerPhoneResult.rows.length > 0) {
-      sellerPhoneNumbers[meal.seller_id] = sellerPhoneResult.rows[0].phone_number;
-    }
-  }
-
-  res.render('customer/payment-confirmations', { customerName, sellerPhoneNumbers });
 });
 
 app.post('/payment-confirmations', async (req, res) => {
@@ -870,7 +863,6 @@ app.post('/payment-confirmations', async (req, res) => {
     res.status(500).json({ error: 'Error processing payment confirmation' });
   }
 });
-
 
 app.post('/payment-confirmation', async (req, res) => {
   const { paymentId, orderId } = req.body;
@@ -1260,7 +1252,6 @@ app.get('/customer/orders', async (req, res) => {
     res.status(500).send('Error fetching orders.');
   }  
 });
-
 
 app.get('/get-branch-name/:ifsc', async (req, res) => {
   const IFSC = req.params.ifsc;

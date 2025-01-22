@@ -38,6 +38,22 @@
       </div>
     </div>
 
+    <div class="container mb-4 text-center">
+      <h3>Total Price to be Paid: ₹<span id="total-price"><%= meal.price %></span></h3>
+    </div>
+  
+    <div class="coupon-info text-center mb-3">
+      <p class="fw-bold">Apply Coupon:</p>
+      <% if (customerCoupon) { %>
+        <select id="coupon-select" class="form-select w-50 mx-auto">
+          <option value="">No coupon applied</option>
+          <option value="<%= customerCoupon %>"><%= customerCoupon %></option>
+        </select>
+      <% } else { %>
+        <p>No coupons available</p>
+      <% } %>
+    </div>
+
     <div class="text-center"> 
       <button id="pay-button" class="btn btn-primary" style="margin-top: 20px;" disabled>Pay</button>
     </div>
@@ -45,8 +61,24 @@
 
   <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
   <script>
-    
-    async function calculateTotalAmount() {
+      const couponSelect = document.getElementById('coupon-select');
+
+// Add event listener for coupon selection
+couponSelect.addEventListener('change', async function () {
+  const totalAmount = await calculateTotalAmount(); // Calculate the base total amount
+  let discountedTotal = totalAmount;
+
+  // Check if a coupon is selected
+  if (this.value) {
+    // Apply a 10% discount
+    discountedTotal = totalAmount * 0.9; // 10% off
+  }
+
+  // Update the total price display
+  document.getElementById('total-price').innerText = discountedTotal.toFixed(2); // Update the displayed total price
+});
+
+async function calculateTotalAmount() {
   let total = 0;
 
   document.querySelectorAll('.meal-price').forEach(function (priceElement) {
@@ -75,7 +107,7 @@
     console.log('Distance Calculation Response:', data);
 
     if (data.error) {
-      console.error('Error calculating distance:', data.error);
+      console.error('Error calculating distance');
       return total;
     }
 
@@ -93,8 +125,13 @@ document.getElementById('pay-button').onclick = async function (e) {
   e.preventDefault();
 
   // Calculate total amount
-  const totalAmount = await calculateTotalAmount(); // Get total amount
+  let totalAmount = await calculateTotalAmount(); // Get total amount
   console.log("Total Amount in Rupees:", totalAmount); // Log the total amount in rupees
+
+  // Check if a coupon is selected
+  if (couponSelect.value) {
+    totalAmount *= 0.9; // Apply a 10% discount if a coupon is selected
+  }
 
   if (!totalAmount || isNaN(totalAmount) || totalAmount <= 0) {
     console.error('Invalid total amount:', totalAmount);
@@ -178,6 +215,7 @@ document.getElementById('pay-button').onclick = async function (e) {
     alert('Error processing the payment. Please try again.');
   }
 };
+
 function toggleAddressInput() {
       const useCurrentLocation = document.getElementById('use-current-location');
       const newAddressContainer = document.getElementById('new-address-container');
